@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 3.7.0 (Perfect Arabic + Working Plugins)
+#  Version : 3.8.0 (Numbered & Perfect)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="3.7.0"
+readonly VERSION="3.8.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -32,6 +32,14 @@ mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
+
+# دالة تأكيد آمنة (تدعم العربي بدون عكوسية)
+confirm_action() {
+    local msg="$1"
+    local ans
+    read -r -p "$(echo -e "\e[1;33m$msg (y/N): \e[0m")" ans
+    [[ "$ans" =~ ^[Yy]$ ]]
+}
 
 log() { printf '[%s] [%-5s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG_FILE" 2>/dev/null; }
 msg()  { log INFO  "$*"; gum style --foreground "$CLR_ACCENT"  "  ℹ  $*"; }
@@ -156,33 +164,32 @@ action_manage_plugins() {
         return
     fi
 
-    # استخدام fzf بدلاً من gum لدعم العربية بشكل مثالي
     local choice
     choice=$(printf "%s\n" \
-        "➕ Install External Plugins | تثبيت إضافات خارجية" \
-        "⚙️ Enable Built-in Plugins  | تفعيل إضافات داخلية" \
-        "📋 List Active Plugins      | عرض الإضافات المفعلة" \
-        "🗑️ Remove Plugin            | إزالة إضافة" \
-        "🔙 Back                     | رجوع" | \
+        " 1) ➕ Install External | تثبيت إضافات خارجية" \
+        " 2) ⚙️ Enable Built-in  | تفعيل إضافات داخلية" \
+        " 3) 📋 List Active      | عرض الإضافات المفعلة" \
+        " 4) 🗑️ Remove Plugin    | إزالة إضافة" \
+        " 5) 🔙 Back             | رجوع" | \
         fzf --reverse --height 10 --prompt "Plugin Manager > " --pointer "▶ ") || return
 
     case "$choice" in
-        "➕"*)
+        " 1)"*)
             local selected
             selected=$(printf "%s\n" \
-                "zsh-autosuggestions | اقتراحات تلقائية" \
-                "zsh-syntax-highlighting | تلوين الأوامر" \
-                "zsh-completions | إكمال إضافي" \
-                "fzf-tab | بحث تفاعلي بالملفات" \
-                "zsh-history-substring-search | بحث في الأوامر" \
-                "zsh-you-should-use | تذكير بالاختصارات" | \
-                fzf --multi --reverse --height 12 --prompt "Select plugins (Tab to select) > " --pointer "▶ ") || return
+                " 1) zsh-autosuggestions | اقتراحات تلقائية" \
+                " 2) zsh-syntax-highlighting | تلوين الأوامر" \
+                " 3) zsh-completions | إكمال إضافي" \
+                " 4) fzf-tab | بحث تفاعلي بالملفات" \
+                " 5) zsh-history-substring-search | بحث في الأوامر" \
+                " 6) zsh-you-should-use | تذكير بالاختصارات" | \
+                fzf --multi --reverse --height 12 --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
 
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                # استخراج اسم الإضافة الإنجليزي فقط وتنظيفه من الإيموجي والمسافات
+                # استخراج اسم الإضافة الإنجليزي فقط (مسح الرقم والمسافات)
                 local plugin_name
-                plugin_name=$(echo "$line" | cut -d'|' -f1 | tr -d ' ' | sed 's/^[^a-zA-Z]*//')
+                plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//' | tr -d ' ')
                 
                 case "$plugin_name" in
                     "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
@@ -194,22 +201,26 @@ action_manage_plugins() {
                 esac
             done <<< "$selected"
             ;;
-        "⚙️"*)
+        " 2)"*)
             local selected
-            selected=$(printf "%s\n" "git" "extract" "colored-man-pages" "command-not-found" "sudo" "web-search" "cp" "z" | \
+            selected=$(printf "%s\n" \
+                " 1) git" " 2) extract" " 3) colored-man-pages" " 4) command-not-found" \
+                " 5) sudo" " 6) web-search" " 7) cp" " 8) z" | \
                 fzf --multi --reverse --height 12 --prompt "Select built-in plugins > " --pointer "▶ ") || return
-            while IFS= read -r plugin; do
-                [[ -z "$plugin" ]] && continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local plugin
+                plugin=$(echo "$line" | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//')
                 add_plugin_to_zshrc "$plugin"
             done <<< "$selected"
             ;;
-        "📋"*)
+        " 3)"*)
             local active
             active=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g')
             gum style --border normal --padding "1 2" --foreground "$CLR_ACCENT" \
                 "Active Plugins:" "" "$active"
             ;;
-        "🗑️"*)
+        " 4)"*)
             local active to_remove
             active=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g' | tr ' ' '\n' | grep -v '^$' || true)
             [[ -z "$active" ]] && { warn "No plugins registered"; return; }
@@ -278,7 +289,7 @@ action_update_tool() {
     if [[ "$UPDATE_ERROR" == "true" ]]; then warn "Failed to connect to GitHub."; return; fi
     if [[ "$HAS_UPDATE" == "false" ]]; then ok "You are on the latest version."; return; fi
     
-    gum confirm --default=false "Update to v$REMOTE_VERSION now? | هل تريد التحديث الآن؟" || return
+    confirm_action "Update to v$REMOTE_VERSION? | هل تريد التحديث الآن؟" || return
     msg "Updating tool..."
     TEMP_FILE=$(mktemp)
     if gum spin --spinner globe --title "Downloading..." -- curl -fsSL "$REPO_URL" -o "$TEMP_FILE"; then
@@ -294,7 +305,7 @@ action_update_tool() {
 }
 
 action_install_all() {
-    gum confirm --default=false "Install EVERYTHING (Packages + Zsh + Theme + Plugins)? | تثبيت الكل؟" || return
+    confirm_action "Install EVERYTHING (Packages + Zsh + Theme + Plugins)? | تثبيت الكل؟" || return
     action_install_packages
     action_setup_zsh
     install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
@@ -307,7 +318,7 @@ action_install_all() {
 }
 
 action_remove() {
-    gum confirm --default=false "Remove T-Header completely? | إزالة T-Header؟" || return
+    confirm_action "Remove T-Header completely? | إزالة T-Header؟" || return
     action_backup
     rm -rf "$CONFIG_DIR" && rm -f "$HOME/.termux/termux.properties"
     sed -i '/theader/d' "$HOME/.zshrc" 2>/dev/null || true
@@ -321,29 +332,29 @@ main_loop() {
         local choice
         local update_opt=""
         
-        if [[ "$HAS_UPDATE" == "true" ]]; then update_opt="🔄 Update Tool      | تحديث اللوحة"; else update_opt="🔄 Check Updates    | فحص التحديثات"; fi
+        if [[ "$HAS_UPDATE" == "true" ]]; then update_opt="11) 🔄 Update Tool      | تحديث اللوحة"; else update_opt="11) 🔄 Check Updates    | فحص التحديثات"; fi
 
         choice=$(printf "%s\n" \
-            "── Setup       | الإعداد ──────────────────────────" \
-            "📦 Install Packages  | تثبيت الحزم" \
-            "🐚 Setup Zsh         | إعداد Zsh" \
-            "── Customize   | التخصيص ────────────────────────" \
-            "🧩 Manage Plugins    | إدارة الإضافات" \
-            "🎨 Change Logo       | تغيير الشعار" \
-            "📝 Change Title      | تغيير العنوان" \
-            "⌨️  Change Keyboard   | تغيير الكيبورد" \
-            "🎭 Change Theme      | تغيير الثيم" \
-            "── Maintenance | الصيانة ────────────────────────" \
+            " 1) ── Setup       | الإعداد ──────────────────────────" \
+            " 2) 📦 Install Packages  | تثبيت الحزم" \
+            " 3) 🐚 Setup Zsh         | إعداد Zsh" \
+            " 4) ── Customize   | التخصيص ────────────────────────" \
+            " 5) 🧩 Manage Plugins    | إدارة الإضافات" \
+            " 6) 🎨 Change Logo       | تغيير الشعار" \
+            " 7) 📝 Change Title      | تغيير العنوان" \
+            " 8) ⌨️  Change Keyboard   | تغيير الكيبورد" \
+            " 9) 🎭 Change Theme      | تغيير الثيم" \
+            "10) ── Maintenance | الصيانة ────────────────────────" \
             "$update_opt" \
-            "💾 Backup            | نسخة احتياطية" \
-            "🚀 Install Everything| تثبيت الكل" \
-            "🗑️  Remove T-Header   | إزالة" \
-            "❌ Exit              | خروج" | \
-            fzf --reverse --height 20 --prompt "Select an option > " --pointer "▶ ") || break
+            "12) 💾 Backup            | نسخة احتياطية" \
+            "13) 🚀 Install Everything| تثبيت الكل" \
+            "14) 🗑️  Remove T-Header   | إزالة" \
+            "15) ❌ Exit              | خروج" | \
+            fzf --reverse --height 22 --prompt "Select (type number or use arrows) > " --pointer "▶ ") || break
 
         echo
         case "$choice" in
-            "──"*) continue ;;
+            *"──"*) continue ;;
             *"Install Packages"*) action_install_packages ;;
             *"Setup Zsh"*) action_setup_zsh ;;
             *"Manage Plugins"*) action_manage_plugins ;;
@@ -358,7 +369,7 @@ main_loop() {
             *"Exit"*|"") break ;;
         esac
         echo
-        gum confirm --default=false "Return to main menu? | العودة للقائمة الرئيسية؟" || break
+        confirm_action "Return to main menu? | العودة للقائمة الرئيسية؟" || break
     done
     clear
     gum style --foreground "$CLR_DIM" "وداعاً 👋"
