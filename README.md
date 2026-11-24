@@ -4,7 +4,7 @@
 
 **A professional, unified control panel for the T-Header project in Termux.**
 
-[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-4.3.1-blue.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Termux-orange.svg)]()
 

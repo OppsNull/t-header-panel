@@ -2,14 +2,28 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 4.3.0 (Absolute Bulletproof Edition)
+#  Version : 4.3.1 (Absolute Bulletproof Edition - Hotfix)
 #  License : MIT
+# ═══════════════════════════════════════════════════════════════════════
+#  Changelog 4.3.1:
+#   - FIX: get_active_plugins now parses multi-line plugins=() blocks
+#          (removing a plugin no longer wipes the whole list)
+#   - FIX: "List Active" now displays the list (gum style ignores stdin
+#          when positional args are given)
+#   - FIX: plugin order is preserved (no more sort -u reordering —
+#          zsh-syntax-highlighting must load last)
+#   - FIX: semver-aware update comparison (no false update prompts)
+#   - ADD: automatic .zshrc backup before plugin/theme modifications
+#   - ADD: log file rotation (512 KB)
+#   - FIX: sed-safe theme names (& / \ escaping)
+#   - FIX: 'theader -l' checks for less, falls back to cat
+#   - UX:  trap cleanup on EXIT only (EXIT fires on Ctrl+C too)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="4.3.0"
+readonly VERSION="4.3.1"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -17,6 +31,7 @@ readonly LOGO_DIR="$CONFIG_DIR/logo"
 readonly TPT_DIR="$CONFIG_DIR/tpt"
 readonly BACKUP_DIR="$HOME/.theader-backups"
 readonly LOG_FILE="$CONFIG_DIR/control-panel.log"
+readonly LOG_MAX_BYTES=524288
 
 readonly CLR_PRIMARY=212
 readonly CLR_ACCENT=141
@@ -26,7 +41,7 @@ readonly CLR_ERROR=196
 readonly CLR_DIM=240
 
 cleanup() { rm -f "${TEMP_FILE:-}" 2>/dev/null || true; }
-trap cleanup EXIT SIGINT SIGTERM
+trap cleanup EXIT
 
 mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 
@@ -48,16 +63,50 @@ confirm_action() {
     [[ "$ans" =~ ^[Yy]$ ]]
 }
 
-log() { printf '[%s] [%-5s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG_FILE" 2>/dev/null; }
+log() {
+    # Rotation: keep the last log plus one .old copy
+    if [[ -f "$LOG_FILE" ]]; then
+        local size
+        size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+        if [[ "$size" -gt "$LOG_MAX_BYTES" ]]; then
+            mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
+        fi
+    fi
+    printf '[%s] [%-5s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG_FILE" 2>/dev/null
+}
 msg()  { log INFO  "$*"; gum style --foreground "$CLR_ACCENT"  "  ℹ  $*"; }
 ok()   { log OK    "$*"; gum style --foreground "$CLR_SUCCESS" "  ✓  $*"; }
 warn() { log WARN  "$*"; gum style --foreground "$CLR_WARN"    "  ⚠  $*"; }
 err()  { log ERR   "$*"; gum style --foreground "$CLR_ERROR"   "  ✗  $*"; }
 
+# Backup a single file before modifying it (used by plugin/theme edits)
+backup_file() {
+    local src="$1"
+    [[ -f "$src" ]] || return 0
+    local name
+    name=$(basename "$src")
+    name="${name#.}"   # نشيل النقطة عشان الملف مايبقاش hidden
+    cp "$src" "$BACKUP_DIR/${name}.$(date +%s)" 2>/dev/null || true
+}
+
 # ─── Update Checker ──────────────────────────────────────────────────
 REMOTE_VERSION=""
 HAS_UPDATE=false
 UPDATE_ERROR=false
+
+# Semantic version compare: returns 0 if $1 > $2  (e.g. 4.10.0 > 4.3.1)
+version_gt() {
+    local IFS=.
+    local -a a=($1) b=($2)
+    local i x y
+    for ((i=0; i<3; i++)); do
+        x=$((10#${a[i]:-0}))
+        y=$((10#${b[i]:-0}))
+        (( x > y )) && return 0
+        (( x < y )) && return 1
+    done
+    return 1
+}
 
 check_for_updates() {
     UPDATE_ERROR=false
@@ -67,7 +116,7 @@ check_for_updates() {
         return
     fi
     REMOTE_VERSION=$(printf '%s\n' "$raw_content" | grep -E '^readonly VERSION=' | head -n 1 | cut -d'"' -f2 || true)
-    if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$VERSION" ]]; then
+    if [[ -n "$REMOTE_VERSION" ]] && version_gt "$REMOTE_VERSION" "$VERSION"; then
         HAS_UPDATE=true
     fi
 }
@@ -136,11 +185,24 @@ action_setup_zsh() {
 }
 
 # ─── Zsh Plugin Manager (Bulletproof Edition) ────────────────────────
-# استخراج الإضافات بدقة من السطر النظيف
+# استخراج الإضافات بدقة من السطر النظيف — يدعم البلوك متعدد الأسطر كمان
 get_active_plugins() {
-    if [[ -f "$HOME/.zshrc" ]]; then
-        grep -E "^[[:space:]]*plugins=\(" "$HOME/.zshrc" | sed -E 's/.*plugins=\(//; s/\).*//' | tr -s ' ' '\n' | grep -v '^$' | sort -u
-    fi
+    [[ -f "$HOME/.zshrc" ]] || return 0
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*plugins=\(/ {
+            line = $0
+            sub(/^[[:space:]]*plugins=\(/, "", line)
+            while (line !~ /\)/) {
+                if ((getline nl) <= 0) break
+                line = line " " nl
+            }
+            sub(/\).*/, "", line)
+            gsub(/[ \t]+/, "\n", line)
+            printf "%s", line
+            exit
+        }
+    ' "$HOME/.zshrc" | grep -v '^$' | awk '!seen[$0]++'
 }
 
 # إعادة بناء بلوك الإضافات بالكامل ليكون في سطر واحد نظيف
@@ -149,6 +211,8 @@ update_zshrc_plugins() {
     local target_plugin="$2"
     local zrc="$HOME/.zshrc"
     local temp_zrc="${zrc}.tmp"
+
+    [[ -f "$zrc" ]] || { err ".zshrc not found."; return 1; }
 
     local plugins=()
     while IFS= read -r p; do
@@ -164,19 +228,29 @@ update_zshrc_plugins() {
         done
         plugins+=("$target_plugin")
     elif [[ "$action" == "remove" ]]; then
+        local found=false
         local new_plugins=()
         for p in "${plugins[@]}"; do
             if [[ "$p" != "$target_plugin" ]]; then
                 new_plugins+=("$p")
+            else
+                found=true
             fi
         done
-        plugins=("${new_plugins[@]}")
+        if [[ "$found" == "false" ]]; then
+            warn "Plugin not found: $target_plugin"
+            return 0
+        fi
+        plugins=("${new_plugins[@]+"${new_plugins[@]}"}")
     fi
 
     local plugin_str=""
-    for p in "${plugins[@]}"; do
+    for p in "${plugins[@]+"${plugins[@]}"}"; do
         plugin_str+="$p "
     done
+
+    # باكاب قبل أي تعديل على .zshrc
+    backup_file "$zrc"
 
     # استخدام awk لمسح البلوك القديم (حتى لو متعدد الأسطر) ووضع سطر واحد نظيف
     awk -v p_str="plugins=( $plugin_str)" '
@@ -195,7 +269,7 @@ update_zshrc_plugins() {
         }
         { print }
     ' "$zrc" > "$temp_zrc"
-    
+
     # لو مفيش بلوك plugins أصلاً، نضيفه في الآخر
     if ! grep -q "^[[:space:]]*plugins=(" "$temp_zrc"; then
         echo "plugins=( $plugin_str)" >> "$temp_zrc"
@@ -214,7 +288,7 @@ install_omz_plugin() {
     local name="$1" repo="$2"
     local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
     mkdir -p "$zc/plugins"
-    
+
     if [[ ! -d "$zc/plugins/$name" ]]; then
         msg "Downloading plugin: $name..."
         if ! git clone --depth=1 "$repo" "$zc/plugins/$name"; then
@@ -272,7 +346,7 @@ action_manage_plugins() {
                 [[ "$line" == *"fzf-tab"* ]] && plugin="fzf-tab"
                 [[ "$line" == *"zsh-history-substring-search"* ]] && plugin="zsh-history-substring-search"
                 [[ "$line" == *"zsh-you-should-use"* ]] && plugin="zsh-you-should-use"
-                
+
                 if [[ -n "$plugin" ]]; then
                     case "$plugin" in
                         "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
@@ -301,29 +375,31 @@ action_manage_plugins() {
         *"List Active"*)
             local active_list
             active_list=$(get_active_plugins)
-            
+
             if [[ -z "$active_list" ]]; then
                 warn "No active plugins found. | $(arb 'لا توجد إضافات مفعلة.')"
             else
-                local output=""
+                local lines=""
                 local count=1
                 while IFS= read -r plugin; do
                     [[ -z "$plugin" ]] && continue
-                    output+="  $count) $plugin\n"
-                    ((count++))
+                    lines+="  $count) $plugin"$'\n'
+                    count=$((count + 1))
                 done <<< "$active_list"
-                
-                echo -e "$output" | gum style --border rounded --padding "1 2" --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" "Active Plugins | $(arb 'الإضافات المفعلة')"
+
+                gum style --border rounded --padding "1 2" \
+                    --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" \
+                    "Active Plugins | $(arb 'الإضافات المفعلة')" "" "$lines"
             fi
             ;;
         *"Remove Plugin"*)
             local active_list to_remove
             active_list=$(get_active_plugins)
             [[ -z "$active_list" ]] && { warn "No plugins registered"; return; }
-            
+
             to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
             [[ -z "$to_remove" ]] && return
-            
+
             update_zshrc_plugins "remove" "$to_remove"
             ;;
     esac
@@ -369,7 +445,13 @@ action_change_theme() {
     themes=$( (ls "$t" 2>/dev/null; ls "$c" 2>/dev/null) | sed 's/\.zsh-theme$//' | sort -u)
     theme=$(printf '%s\n' "$themes" | fzf --reverse --height 100% --border --info=inline --prompt "Search Theme > " --pointer "▶ ") || return
     [[ -z "$theme" ]] && return
-    sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$theme\"/" "$HOME/.zshrc"
+
+    # باكاب + تهريب محارف sed الخاصة (& / / / \)
+    backup_file "$HOME/.zshrc"
+    local esc_theme="${theme//\\/\\\\}"
+    esc_theme="${esc_theme//&/\\&}"
+    esc_theme="${esc_theme//\//\\/}"
+    sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$esc_theme\"/" "$HOME/.zshrc"
     ok "Theme changed to: $theme"
 }
 
@@ -385,7 +467,7 @@ action_update_tool() {
     check_for_updates
     if [[ "$UPDATE_ERROR" == "true" ]]; then warn "Failed to connect to GitHub."; return; fi
     if [[ "$HAS_UPDATE" == "false" ]]; then ok "You are on the latest version."; return; fi
-    
+
     confirm_action "Update to v$REMOTE_VERSION? | $(arb 'هل تريد التحديث الآن؟')" || return
     msg "Updating tool..."
     TEMP_FILE=$(mktemp)
@@ -428,10 +510,10 @@ main_loop() {
         banner
         local choice
         local update_opt=""
-        
-        if [[ "$HAS_UPDATE" == "true" ]]; then 
+
+        if [[ "$HAS_UPDATE" == "true" ]]; then
             update_opt="11) 🔄 Update Tool      | $(arb 'تحديث اللوحة')"
-        else 
+        else
             update_opt="11) 🔄 Check Updates    | $(arb 'فحص التحديثات')"
         fi
 
@@ -492,7 +574,13 @@ EOF
         exit 0 ;;
     -v|--version) echo "${APP_NAME} v${VERSION}"; exit 0 ;;
     -u|--update)  check_for_updates; action_update_tool; exit 0 ;;
-    -l|--log)     [[ -f "$LOG_FILE" ]] && less "$LOG_FILE" || echo "No log yet"; exit 0 ;;
+    -l|--log)
+        if [[ -f "$LOG_FILE" ]]; then
+            if has less; then less "$LOG_FILE"; else cat "$LOG_FILE"; fi
+        else
+            echo "No log yet"
+        fi
+        exit 0 ;;
 esac
 
 # ─── Entrypoint ───────────────────────────────────────────────────────
