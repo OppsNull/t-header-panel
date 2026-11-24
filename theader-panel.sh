@@ -3,13 +3,13 @@
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
 #  Professional unified menu for the T-Header project
-#  Version : 3.2.0 (Auto-Updater Edition)
+#  Version : 3.2.1 (RTL & Plugin Menu Fix)
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -o pipefail
-readonly VERSION="3.2.0"
+readonly VERSION="3.2.1"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -165,13 +165,14 @@ action_manage_plugins() {
     case "$choice" in
         *"خارجية"*|*"External"*)
             local selected
+            # استخدام الأسماء الإنجليزية فقط لتجنب مشاكل العرض في التيرمكس
             selected=$(gum choose --no-limit --header "$(arb 'اختر الإضافات (مسافة للتحديد، Enter للتأكيد):')" --cursor "▶ " \
-                "zsh-autosuggestions (اقتراحات تلقائية)" \
-                "zsh-syntax-highlighting (تلوين الأوامر)" \
-                "zsh-completions (إكمال إضافي)" \
-                "fzf-tab (بحث تفاعلي بالملفات)" \
-                "zsh-history-substring-search (بحث في الأوامر)" \
-                "you-should-use (تذكير بالاختصارات)")
+                "zsh-autosuggestions" \
+                "zsh-syntax-highlighting" \
+                "zsh-completions" \
+                "fzf-tab" \
+                "zsh-history-substring-search" \
+                "you-should-use")
 
             declare -A ext_plugins=(
                 ["zsh-autosuggestions"]="https://github.com/zsh-users/zsh-autosuggestions"
@@ -183,8 +184,7 @@ action_manage_plugins() {
             )
 
             for item in $selected; do
-                local plugin_name="${item%% *}"
-                install_omz_plugin "$plugin_name" "${ext_plugins[$plugin_name]}"
+                install_omz_plugin "$item" "${ext_plugins[$item]}"
             done
             ;;
         *"داخلية"*|*"Built-in"*)
