@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 3.8.0 (Numbered & Perfect)
+#  Version : 3.9.0 (True RTL Fix + Numbered Menu)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="3.8.0"
+readonly VERSION="3.9.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -33,7 +33,16 @@ mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
-# دالة تأكيد آمنة (تدعم العربي بدون عكوسية)
+# الدالة السحرية: بتقلب الجزء العربي بس وتسيبه في النص
+arb() {
+    if has fribidi; then
+        printf '%s' "$1" | fribidi --nopad 2>/dev/null || printf '%s' "$1"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+# دالة تأكيد آمنة (مبنية على read بدل gum عشان ميعكسرش العربي)
 confirm_action() {
     local msg="$1"
     local ans
@@ -82,7 +91,7 @@ banner() {
         --border double --padding "0 3" \
         --foreground "$CLR_PRIMARY" --border-foreground "$CLR_PRIMARY" \
         "⚡  ${APP_NAME}" \
-        "لوحة تحكم موحدة لمشروع T-Header" \
+        "T-Header | $(arb 'لوحة تحكم موحدة لمشروع')" \
         "v${VERSION}  •  Termux Customization Suite" \
         "$update_msg"
     echo
@@ -103,7 +112,7 @@ action_install_packages() {
     msg "Installing basic packages..."
     gum spin --spinner dot --title "Updating packages..." -- bash -c 'pkg update -y && pkg upgrade -y' >/dev/null 2>&1 || true
     gum spin --spinner dot --title "Installing tools..." -- pkg install -y git zsh curl wget figlet lolcat boxes fzf gum bat eza ncurses-utils fribidi >/dev/null 2>&1 || true
-    ok "Packages installed successfully | تم تثبيت الحزم"
+    ok "Packages installed | $(arb 'تم تثبيت الحزم')"
 }
 
 action_setup_zsh() {
@@ -121,20 +130,18 @@ action_setup_zsh() {
         fi
     fi
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        err "Failed to install Oh-my-zsh. Check internet."
+        err "Failed to install Oh-my-zsh."
         return 1
     fi
     [[ -f "$HOME/.zshrc" ]] || cp "$HOME/.oh-my-zsh/templates/zshrc.zsh-template" "$HOME/.zshrc"
-    ok "Zsh setup completed | تم إعداد Zsh"
+    ok "Zsh setup completed | $(arb 'تم إعداد Zsh')"
 }
 
 # ─── Zsh Plugin Manager ──────────────────────────────────────────────
 add_plugin_to_zshrc() {
     local plugin="$1"
     local zrc="$HOME/.zshrc"
-    if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then
-        return 0
-    fi
+    if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then return 0; fi
     if grep -q "zsh-syntax-highlighting" "$zrc"; then
         sed -i -E "s/zsh-syntax-highlighting/${plugin} zsh-syntax-highlighting/" "$zrc"
     else
@@ -151,7 +158,7 @@ install_omz_plugin() {
     if [[ ! -d "$zc/plugins/$name" ]]; then
         msg "Downloading plugin: $name..."
         if ! git clone --depth=1 "$repo" "$zc/plugins/$name"; then
-            err "Failed to download: $name (Check internet)"
+            err "Failed to download: $name"
             return 1
         fi
     fi
@@ -166,28 +173,28 @@ action_manage_plugins() {
 
     local choice
     choice=$(printf "%s\n" \
-        " 1) ➕ Install External | تثبيت إضافات خارجية" \
-        " 2) ⚙️ Enable Built-in  | تفعيل إضافات داخلية" \
-        " 3) 📋 List Active      | عرض الإضافات المفعلة" \
-        " 4) 🗑️ Remove Plugin    | إزالة إضافة" \
-        " 5) 🔙 Back             | رجوع" | \
+        " 1) Install External | $(arb 'تثبيت إضافات خارجية')" \
+        " 2) Enable Built-in  | $(arb 'تفعيل إضافات داخلية')" \
+        " 3) List Active      | $(arb 'عرض الإضافات المفعلة')" \
+        " 4) Remove Plugin    | $(arb 'إزالة إضافة')" \
+        " 5) Back             | $(arb 'رجوع')" | \
         fzf --reverse --height 10 --prompt "Plugin Manager > " --pointer "▶ ") || return
 
     case "$choice" in
         " 1)"*)
             local selected
             selected=$(printf "%s\n" \
-                " 1) zsh-autosuggestions | اقتراحات تلقائية" \
-                " 2) zsh-syntax-highlighting | تلوين الأوامر" \
-                " 3) zsh-completions | إكمال إضافي" \
-                " 4) fzf-tab | بحث تفاعلي بالملفات" \
-                " 5) zsh-history-substring-search | بحث في الأوامر" \
-                " 6) zsh-you-should-use | تذكير بالاختصارات" | \
+                " 1) zsh-autosuggestions | $(arb 'اقتراحات تلقائية')" \
+                " 2) zsh-syntax-highlighting | $(arb 'تلوين الأوامر')" \
+                " 3) zsh-completions | $(arb 'إكمال إضافي')" \
+                " 4) fzf-tab | $(arb 'بحث تفاعلي بالملفات')" \
+                " 5) zsh-history-substring-search | $(arb 'بحث في الأوامر')" \
+                " 6) zsh-you-should-use | $(arb 'تذكير بالاختصارات')" | \
                 fzf --multi --reverse --height 12 --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
 
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                # استخراج اسم الإضافة الإنجليزي فقط (مسح الرقم والمسافات)
+                # استخراج اسم الإضافة الإنجليزي فقط (مسح الرقم والمسافات وعلامة |)
                 local plugin_name
                 plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//' | tr -d ' ')
                 
@@ -289,7 +296,7 @@ action_update_tool() {
     if [[ "$UPDATE_ERROR" == "true" ]]; then warn "Failed to connect to GitHub."; return; fi
     if [[ "$HAS_UPDATE" == "false" ]]; then ok "You are on the latest version."; return; fi
     
-    confirm_action "Update to v$REMOTE_VERSION? | هل تريد التحديث الآن؟" || return
+    confirm_action "Update to v$REMOTE_VERSION? | $(arb 'هل تريد التحديث الآن؟')" || return
     msg "Updating tool..."
     TEMP_FILE=$(mktemp)
     if gum spin --spinner globe --title "Downloading..." -- curl -fsSL "$REPO_URL" -o "$TEMP_FILE"; then
@@ -305,7 +312,7 @@ action_update_tool() {
 }
 
 action_install_all() {
-    confirm_action "Install EVERYTHING (Packages + Zsh + Theme + Plugins)? | تثبيت الكل؟" || return
+    confirm_action "Install EVERYTHING (Packages + Zsh + Theme + Plugins)? | $(arb 'تثبيت الكل؟')" || return
     action_install_packages
     action_setup_zsh
     install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
@@ -318,7 +325,7 @@ action_install_all() {
 }
 
 action_remove() {
-    confirm_action "Remove T-Header completely? | إزالة T-Header؟" || return
+    confirm_action "Remove T-Header completely? | $(arb 'إزالة T-Header؟')" || return
     action_backup
     rm -rf "$CONFIG_DIR" && rm -f "$HOME/.termux/termux.properties"
     sed -i '/theader/d' "$HOME/.zshrc" 2>/dev/null || true
@@ -332,24 +339,29 @@ main_loop() {
         local choice
         local update_opt=""
         
-        if [[ "$HAS_UPDATE" == "true" ]]; then update_opt="11) 🔄 Update Tool      | تحديث اللوحة"; else update_opt="11) 🔄 Check Updates    | فحص التحديثات"; fi
+        if [[ "$HAS_UPDATE" == "true" ]]; then 
+            update_opt="11) 🔄 Update Tool      | $(arb 'تحديث اللوحة')"
+        else 
+            update_opt="11) 🔄 Check Updates    | $(arb 'فحص التحديثات')"
+        fi
 
+        # استخدام دالة arb لكل جزء عربي عشان ميتعكسش
         choice=$(printf "%s\n" \
-            " 1) ── Setup       | الإعداد ──────────────────────────" \
-            " 2) 📦 Install Packages  | تثبيت الحزم" \
-            " 3) 🐚 Setup Zsh         | إعداد Zsh" \
-            " 4) ── Customize   | التخصيص ────────────────────────" \
-            " 5) 🧩 Manage Plugins    | إدارة الإضافات" \
-            " 6) 🎨 Change Logo       | تغيير الشعار" \
-            " 7) 📝 Change Title      | تغيير العنوان" \
-            " 8) ⌨️  Change Keyboard   | تغيير الكيبورد" \
-            " 9) 🎭 Change Theme      | تغيير الثيم" \
-            "10) ── Maintenance | الصيانة ────────────────────────" \
+            " 1) ── Setup       | $(arb 'الإعداد') ──────────────────────────" \
+            " 2) 📦 Install Packages  | $(arb 'تثبيت الحزم')" \
+            " 3) 🐚 Setup Zsh         | $(arb 'إعداد Zsh')" \
+            " 4) ── Customize   | $(arb 'التخصيص') ────────────────────────" \
+            " 5) 🧩 Manage Plugins    | $(arb 'إدارة الإضافات')" \
+            " 6) 🎨 Change Logo       | $(arb 'تغيير الشعار')" \
+            " 7) 📝 Change Title      | $(arb 'تغيير العنوان')" \
+            " 8) ⌨️  Change Keyboard   | $(arb 'تغيير الكيبورد')" \
+            " 9) 🎭 Change Theme      | $(arb 'تغيير الثيم')" \
+            "10) ── Maintenance | $(arb 'الصيانة') ────────────────────────" \
             "$update_opt" \
-            "12) 💾 Backup            | نسخة احتياطية" \
-            "13) 🚀 Install Everything| تثبيت الكل" \
-            "14) 🗑️  Remove T-Header   | إزالة" \
-            "15) ❌ Exit              | خروج" | \
+            "12) 💾 Backup            | $(arb 'نسخة احتياطية')" \
+            "13) 🚀 Install Everything| $(arb 'تثبيت الكل')" \
+            "14) 🗑️  Remove T-Header   | $(arb 'إزالة')" \
+            "15) ❌ Exit              | $(arb 'خروج')" | \
             fzf --reverse --height 22 --prompt "Select (type number or use arrows) > " --pointer "▶ ") || break
 
         echo
@@ -369,7 +381,7 @@ main_loop() {
             *"Exit"*|"") break ;;
         esac
         echo
-        confirm_action "Return to main menu? | العودة للقائمة الرئيسية؟" || break
+        confirm_action "Return to main menu? | $(arb 'العودة للقائمة الرئيسية؟')" || break
     done
     clear
     gum style --foreground "$CLR_DIM" "وداعاً 👋"
