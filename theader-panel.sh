@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 3.9.0 (True RTL Fix + Numbered Menu)
+#  Version : 3.9.1 (Installed Indicator)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="3.9.0"
+readonly VERSION="3.9.1"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -33,7 +33,6 @@ mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
-# الدالة السحرية: بتقلب الجزء العربي بس وتسيبه في النص
 arb() {
     if has fribidi; then
         printf '%s' "$1" | fribidi --nopad 2>/dev/null || printf '%s' "$1"
@@ -42,7 +41,6 @@ arb() {
     fi
 }
 
-# دالة تأكيد آمنة (مبنية على read بدل gum عشان ميعكسرش العربي)
 confirm_action() {
     local msg="$1"
     local ans
@@ -141,13 +139,19 @@ action_setup_zsh() {
 add_plugin_to_zshrc() {
     local plugin="$1"
     local zrc="$HOME/.zshrc"
-    if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then return 0; fi
+    
+    # لو الإضافة موجودة بالفعل في الملف
+    if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then
+        warn "Plugin already enabled: $plugin | $(arb 'الإضافة مفعلة بالفعل')"
+        return 0
+    fi
+    
     if grep -q "zsh-syntax-highlighting" "$zrc"; then
         sed -i -E "s/zsh-syntax-highlighting/${plugin} zsh-syntax-highlighting/" "$zrc"
     else
         sed -i -E "s/^plugins=\((.*)\)/plugins=(\1 ${plugin})/" "$zrc"
     fi
-    ok "Plugin enabled: $plugin"
+    ok "Plugin enabled: $plugin | $(arb 'تم تفعيل الإضافة')"
 }
 
 install_omz_plugin() {
@@ -155,6 +159,7 @@ install_omz_plugin() {
     local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
     mkdir -p "$zc/plugins"
     
+    # لو المجلد مش موجود، ننزله
     if [[ ! -d "$zc/plugins/$name" ]]; then
         msg "Downloading plugin: $name..."
         if ! git clone --depth=1 "$repo" "$zc/plugins/$name"; then
@@ -182,21 +187,34 @@ action_manage_plugins() {
 
     case "$choice" in
         " 1)"*)
+            # جلب الإضافات المفعلة حالياً
+            local active_list
+            active_list=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g')
+
+            # تجهيز علامة الصح
+            local chk1="[ ]" chk2="[ ]" chk3="[ ]" chk4="[ ]" chk5="[ ]" chk6="[ ]"
+            grep -qw "zsh-autosuggestions" <<< "$active_list" && chk1="[✓]"
+            grep -qw "zsh-syntax-highlighting" <<< "$active_list" && chk2="[✓]"
+            grep -qw "zsh-completions" <<< "$active_list" && chk3="[✓]"
+            grep -qw "fzf-tab" <<< "$active_list" && chk4="[✓]"
+            grep -qw "zsh-history-substring-search" <<< "$active_list" && chk5="[✓]"
+            grep -qw "zsh-you-should-use" <<< "$active_list" && chk6="[✓]"
+
             local selected
             selected=$(printf "%s\n" \
-                " 1) zsh-autosuggestions | $(arb 'اقتراحات تلقائية')" \
-                " 2) zsh-syntax-highlighting | $(arb 'تلوين الأوامر')" \
-                " 3) zsh-completions | $(arb 'إكمال إضافي')" \
-                " 4) fzf-tab | $(arb 'بحث تفاعلي بالملفات')" \
-                " 5) zsh-history-substring-search | $(arb 'بحث في الأوامر')" \
-                " 6) zsh-you-should-use | $(arb 'تذكير بالاختصارات')" | \
+                " 1) $chk1 zsh-autosuggestions | $(arb 'اقتراحات تلقائية')" \
+                " 2) $chk2 zsh-syntax-highlighting | $(arb 'تلوين الأوامر')" \
+                " 3) $chk3 zsh-completions | $(arb 'إكمال إضافي')" \
+                " 4) $chk4 fzf-tab | $(arb 'بحث تفاعلي بالملفات')" \
+                " 5) $chk5 zsh-history-substring-search | $(arb 'بحث في الأوامر')" \
+                " 6) $chk6 zsh-you-should-use | $(arb 'تذكير بالاختصارات')" | \
                 fzf --multi --reverse --height 12 --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
 
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                # استخراج اسم الإضافة الإنجليزي فقط (مسح الرقم والمسافات وعلامة |)
+                # استخراج اسم الإضافة بدقة (مسح الرقم، وعلامة الصح، والمسافات)
                 local plugin_name
-                plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//' | tr -d ' ')
+                plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*\[.\][[:space:]]*//' | tr -d ' ')
                 
                 case "$plugin_name" in
                     "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
@@ -345,7 +363,6 @@ main_loop() {
             update_opt="11) 🔄 Check Updates    | $(arb 'فحص التحديثات')"
         fi
 
-        # استخدام دالة arb لكل جزء عربي عشان ميتعكسش
         choice=$(printf "%s\n" \
             " 1) ── Setup       | $(arb 'الإعداد') ──────────────────────────" \
             " 2) 📦 Install Packages  | $(arb 'تثبيت الحزم')" \
