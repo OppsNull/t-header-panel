@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 3.5.0 (Arabic First Edition)
+#  Version : 3.6.0 (Bilingual & Fixed Plugins)
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
@@ -10,7 +10,7 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="3.5.0"
+readonly VERSION="3.6.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -34,6 +34,7 @@ mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
+# دالة لضبط النص العربي في التيرمكس
 arb() {
     if has fribidi; then
         printf '%s\n' "$1" | fribidi --nopad 2>/dev/null || printf '%s\n' "$1"
@@ -101,14 +102,14 @@ EOF
 }
 
 action_install_packages() {
-    msg "$(arb 'جاري تثبيت الحزم الأساسية...')"
+    msg "$(arb 'تثبيت الحزم الأساسية...')"
     gum spin --spinner dot --title "$(arb 'تحديث الحزم...')" -- bash -c 'pkg update -y && pkg upgrade -y' >/dev/null 2>&1 || true
     gum spin --spinner dot --title "$(arb 'تثبيت الأدوات...')" -- pkg install -y git zsh curl wget figlet lolcat boxes fzf gum bat eza ncurses-utils fribidi >/dev/null 2>&1 || true
     ok "$(arb 'تم تثبيت الحزم بنجاح')"
 }
 
 action_setup_zsh() {
-    msg "$(arb 'جاري إعداد Zsh + Oh-my-zsh...')"
+    msg "$(arb 'إعداد Zsh + Oh-my-zsh...')"
     has zsh || pkg install -y zsh >/dev/null 2>&1 || true
     has git || pkg install -y git >/dev/null 2>&1 || true
 
@@ -148,10 +149,14 @@ add_plugin_to_zshrc() {
 install_omz_plugin() {
     local name="$1" repo="$2"
     local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+    
+    # إنشاء المجلد لو مش موجود
     mkdir -p "$zc/plugins"
+    
     if [[ ! -d "$zc/plugins/$name" ]]; then
         msg "$(arb "جاري تحميل الإضافة: $name...")"
-        if ! git clone -q --depth=1 "$repo" "$zc/plugins/$name" >/dev/null 2>&1; then
+        # إزالة gum spin عشان لو فشل التحميل نعرف السبب
+        if ! git clone -q --depth=1 "$repo" "$zc/plugins/$name"; then
             err "$(arb "فشل تحميل الإضافة: $name (تحقق من الإنترنت)")"
             return 1
         fi
@@ -164,36 +169,40 @@ action_manage_plugins() {
         err "$(arb '.zshrc غير موجود، قم بإعداد Zsh أولاً')"; return
     fi
 
-    # استخدام الإيموجي في بداية السطر عشان نتفادى مشاكل العرض ونضمن اختيار صح
     local choice
     choice=$(gum choose --header "$(arb 'إدارة إضافات Zsh:')" --cursor "▶ " \
-        "$(arb '➕ تثبيت إضافات خارجية')" \
-        "$(arb '⚙️ تفعيل إضافات داخلية')" \
-        "$(arb '📋 عرض الإضافات المفعلة')" \
-        "$(arb '🗑️ إزالة إضافة')" \
-        "$(arb '🔙 رجوع')") || return
+        "➕ Install External | تثبيت إضافات خارجية" \
+        "⚙️ Enable Built-in  | تفعيل إضافات داخلية" \
+        "📋 List Active      | عرض الإضافات المفعلة" \
+        "🗑️ Remove Plugin    | إزالة إضافة" \
+        "🔙 Back             | رجوع") || return
 
     case "$choice" in
         "➕"*)
             local selected
             selected=$(gum choose --no-limit --header "$(arb 'اختر الإضافات (مسافة للتحديد، Enter للتأكيد):')" --cursor "▶ " \
-                "$(arb '💡 zsh-autosuggestions (اقتراحات تلقائية)')" \
-                "$(arb '🎨 zsh-syntax-highlighting (تلوين الأوامر)')" \
-                "$(arb '📁 zsh-completions (إكمال إضافي)')" \
-                "$(arb '🔍 fzf-tab (بحث تفاعلي بالملفات)')" \
-                "$(arb '📜 zsh-history-substring-search (بحث في الأوامر)')" \
-                "$(arb '🔔 zsh-you-should-use (تذكير بالاختصارات)')") || return
+                "zsh-autosuggestions | اقتراحات تلقائية" \
+                "zsh-syntax-highlighting | تلوين الأوامر" \
+                "zsh-completions | إكمال إضافي" \
+                "fzf-tab | بحث تفاعلي بالملفات" \
+                "zsh-history-substring-search | بحث في الأوامر" \
+                "zsh-you-should-use | تذكير بالاختصارات") || return
 
-            # نقرأ كل سطر لوحده عشان نتفادى مشكلة المسافات في العربي
+            # السحر كله هنا: بنقرأ السطر ونفصل الاسم الإنجليزي عن الوصف العربي
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                case "$line" in
-                    "💡"*) install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
-                    "🎨"*) install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" ;;
-                    "📁"*) install_omz_plugin "zsh-completions" "https://github.com/zsh-users/zsh-completions" ;;
-                    "🔍"*) install_omz_plugin "fzf-tab" "https://github.com/Aloxaf/fzf-tab" ;;
-                    "📜"*) install_omz_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search" ;;
-                    "🔔"*) install_omz_plugin "zsh-you-should-use" "https://github.com/MichaelAquilina/zsh-you-should-use" ;;
+                # ناخد الجزء الإنجليزي اللي قبل علامة |
+                local plugin_name="${line%%|*}"
+                # نشيل أي مسافات زيادة من اليمين أو الشمال
+                plugin_name=$(echo "$plugin_name" | xargs)
+                
+                case "$plugin_name" in
+                    "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
+                    "zsh-syntax-highlighting") install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" ;;
+                    "zsh-completions") install_omz_plugin "zsh-completions" "https://github.com/zsh-users/zsh-completions" ;;
+                    "fzf-tab") install_omz_plugin "fzf-tab" "https://github.com/Aloxaf/fzf-tab" ;;
+                    "zsh-history-substring-search") install_omz_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search" ;;
+                    "zsh-you-should-use") install_omz_plugin "zsh-you-should-use" "https://github.com/MichaelAquilina/zsh-you-should-use" ;;
                 esac
             done <<< "$selected"
             ;;
@@ -324,44 +333,48 @@ main_loop() {
         local choice
         local update_opt=""
         
-        if [[ "$HAS_UPDATE" == "true" ]]; then update_opt="$(arb '🔄 تحديث اللوحة')"; else update_opt="$(arb '🔄 التحقق من التحديثات')"; fi
+        if [[ "$HAS_UPDATE" == "true" ]]; then 
+            update_opt="🔄 Update Tool      | تحديث اللوحة"
+        else 
+            update_opt="🔄 Check Updates    | فحص التحديثات" 
+        fi
 
-        choice=$(gum choose --header "$(arb 'اختر من القائمة:')" --cursor "▶ " --height 20 \
-            "$(arb '── الإعداد ──────────────────────────')" \
-            "$(arb '📦 تثبيت الحزم')" \
-            "$(arb '🐚 إعداد Zsh + Oh-my-zsh')" \
-            "$(arb '── التخصيص ────────────────────────')" \
-            "$(arb '🧩 إدارة إضافات Zsh')" \
-            "$(arb '🎨 تغيير الشعار')" \
-            "$(arb '📝 تغيير العنوان')" \
-            "$(arb '⌨️  تغيير الكيبورد')" \
-            "$(arb '🎭 تغيير ثيم ZSH')" \
-            "$(arb '── الصيانة ────────────────────────')" \
+        choice=$(gum choose --header "$(arb 'اختر من القائمة | Select an option:')" --cursor "▶ " --height 20 \
+            "── Setup       | الإعداد ──────────────────────────" \
+            "📦 Install Packages  | تثبيت الحزم" \
+            "🐚 Setup Zsh         | إعداد Zsh" \
+            "── Customize   | التخصيص ────────────────────────" \
+            "🧩 Manage Plugins    | إدارة الإضافات" \
+            "🎨 Change Logo       | تغيير الشعار" \
+            "📝 Change Title      | تغيير العنوان" \
+            "⌨️  Change Keyboard   | تغيير الكيبورد" \
+            "🎭 Change Theme      | تغيير الثيم" \
+            "── Maintenance | الصيانة ────────────────────────" \
             "$update_opt" \
-            "$(arb '💾 نسخة احتياطية')" \
-            "$(arb '🚀 تثبيت الكل')" \
-            "$(arb '🗑️  إزالة T-Header')" \
-            "$(arb '❌ خروج')"
+            "💾 Backup            | نسخة احتياطية" \
+            "🚀 Install Everything| تثبيت الكل" \
+            "🗑️  Remove T-Header   | إزالة" \
+            "❌ Exit              | خروج"
         ) || break
 
         echo
         case "$choice" in
             "──"*) continue ;;
-            "📦"*) action_install_packages ;;
-            "🐚"*) action_setup_zsh ;;
-            "🧩"*) action_manage_plugins ;;
-            "🎨"*) action_change_logo ;;
-            "📝"*) action_change_title ;;
-            "⌨️"*) action_change_keyboard ;;
-            "🎭"*) action_change_theme ;;
-            "🔄"*) action_update_tool ;;
-            "💾"*) action_backup ;;
-            "🚀"*) action_install_all ;;
-            "🗑️"*) action_remove ;;
-            "❌"*|"") break ;;
+            *"Install Packages"*) action_install_packages ;;
+            *"Setup Zsh"*) action_setup_zsh ;;
+            *"Manage Plugins"*) action_manage_plugins ;;
+            *"Change Logo"*) action_change_logo ;;
+            *"Change Title"*) action_change_title ;;
+            *"Change Keyboard"*) action_change_keyboard ;;
+            *"Change Theme"*) action_change_theme ;;
+            *"Update Tool"*|*"Check Updates"*) action_update_tool ;;
+            *"Backup"*) action_backup ;;
+            *"Install Everything"*) action_install_all ;;
+            *"Remove T-Header"*) action_remove ;;
+            *"Exit"*|"") break ;;
         esac
         echo
-        gum confirm --default=false "$(arb 'العودة للقائمة الرئيسية؟')" || break
+        gum confirm --default=false "$(arb 'العودة للقائمة الرئيسية؟ | Return to main menu?')" || break
     done
     clear
     gum style --foreground "$CLR_DIM" "$(arb 'وداعاً 👋')"
