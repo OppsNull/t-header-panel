@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 4.1.0 (Smart Parsing & Stable UI)
+#  Version : 4.2.0 (Bulletproof Parsing)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="4.1.0"
+readonly VERSION="4.2.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -135,11 +135,11 @@ action_setup_zsh() {
     ok "Zsh setup completed | $(arb 'تم إعداد Zsh')"
 }
 
-# ─── Zsh Plugin Manager (Smart Parsing) ──────────────────────────────
+# ─── Zsh Plugin Manager (Bulletproof) ────────────────────────────────
 get_active_plugins() {
-    # دالة ذكية لسحب الإضافات سواء كانت في سطر واحد أو متعددة الأسطر
+    # استخراج كل الإضافات من بين القوسين مهما كان شكلها
     if [[ -f "$HOME/.zshrc" ]]; then
-        awk '/^plugins=\(/,/\)/' "$HOME/.zshrc" 2>/dev/null | tr -d '\n' | sed -E 's/plugins=\(|\)//g' | tr ' ' '\n' | grep -v '^$' | sort -u
+        sed -n '/plugins=(/,/)/p' "$HOME/.zshrc" 2>/dev/null | tr -d '\n' | sed -E 's/^plugins=\(//; s/\)$//' | tr ' ' '\n' | grep -v '^$' | sort -u
     fi
 }
 
@@ -147,18 +147,13 @@ add_plugin_to_zshrc() {
     local plugin="$1"
     local zrc="$HOME/.zshrc"
     
-    # لو الإضافة موجودة بالفعل
     if grep -qw "$plugin" "$zrc" 2>/dev/null; then
         warn "Plugin already enabled: $plugin | $(arb 'الإضافة مفعلة بالفعل')"
         return 0
     fi
     
-    # حقن الإضافة بأمان داخل القوس المفتوح plugins=(
-    if grep -q "zsh-syntax-highlighting" "$zrc"; then
-        sed -i -E "s/\b(zsh-syntax-highlighting)\b/${plugin} \1/" "$zrc"
-    else
-        sed -i -E "s/^plugins=\(/plugins=( ${plugin} /" "$zrc"
-    fi
+    # حقن الإضافة بأمان بعد قوس الفتح مباشرة
+    sed -i "/^plugins=(/ s/$/ ${plugin} /" "$zrc"
     ok "Plugin enabled: $plugin | $(arb 'تم تفعيل الإضافة')"
 }
 
@@ -193,7 +188,7 @@ action_manage_plugins() {
         fzf --reverse --height 100% --border --info=inline --prompt "Plugin Manager > " --pointer "▶ ") || return
 
     case "$choice" in
-        " 1)"*)
+        *"Install External"*)
             local active_list
             active_list=$(get_active_plugins)
 
@@ -217,20 +212,28 @@ action_manage_plugins() {
 
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                local plugin_name
-                plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*\[.\][[:space:]]*//' | tr -d ' ')
+                local plugin=""
+                # استخراج الإضافة بناءً على وجود اسمها في السطر (أقوى طريقة)
+                [[ "$line" == *"zsh-autosuggestions"* ]] && plugin="zsh-autosuggestions"
+                [[ "$line" == *"zsh-syntax-highlighting"* ]] && plugin="zsh-syntax-highlighting"
+                [[ "$line" == *"zsh-completions"* ]] && plugin="zsh-completions"
+                [[ "$line" == *"fzf-tab"* ]] && plugin="fzf-tab"
+                [[ "$line" == *"zsh-history-substring-search"* ]] && plugin="zsh-history-substring-search"
+                [[ "$line" == *"zsh-you-should-use"* ]] && plugin="zsh-you-should-use"
                 
-                case "$plugin_name" in
-                    "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
-                    "zsh-syntax-highlighting") install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" ;;
-                    "zsh-completions") install_omz_plugin "zsh-completions" "https://github.com/zsh-users/zsh-completions" ;;
-                    "fzf-tab") install_omz_plugin "fzf-tab" "https://github.com/Aloxaf/fzf-tab" ;;
-                    "zsh-history-substring-search") install_omz_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search" ;;
-                    "zsh-you-should-use") install_omz_plugin "zsh-you-should-use" "https://github.com/MichaelAquilina/zsh-you-should-use" ;;
-                esac
+                if [[ -n "$plugin" ]]; then
+                    case "$plugin" in
+                        "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
+                        "zsh-syntax-highlighting") install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" ;;
+                        "zsh-completions") install_omz_plugin "zsh-completions" "https://github.com/zsh-users/zsh-completions" ;;
+                        "fzf-tab") install_omz_plugin "fzf-tab" "https://github.com/Aloxaf/fzf-tab" ;;
+                        "zsh-history-substring-search") install_omz_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search" ;;
+                        "zsh-you-should-use") install_omz_plugin "zsh-you-should-use" "https://github.com/MichaelAquilina/zsh-you-should-use" ;;
+                    esac
+                fi
             done <<< "$selected"
             ;;
-        " 2)"*)
+        *"Enable Built-in"*)
             local selected
             selected=$(printf "%s\n" \
                 " 1) git" " 2) extract" " 3) colored-man-pages" " 4) command-not-found" \
@@ -238,13 +241,19 @@ action_manage_plugins() {
                 fzf --multi --reverse --height 100% --border --info=inline --prompt "Select built-in plugins > " --pointer "▶ ") || return
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                local plugin
-                plugin=$(echo "$line" | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//')
-                add_plugin_to_zshrc "$plugin"
+                local plugin=""
+                [[ "$line" == *"git"* ]] && plugin="git"
+                [[ "$line" == *"extract"* ]] && plugin="extract"
+                [[ "$line" == *"colored-man-pages"* ]] && plugin="colored-man-pages"
+                [[ "$line" == *"command-not-found"* ]] && plugin="command-not-found"
+                [[ "$line" == *"sudo"* ]] && plugin="sudo"
+                [[ "$line" == *"web-search"* ]] && plugin="web-search"
+                [[ "$line" == *"cp"* ]] && plugin="cp"
+                [[ "$line" == *"z"* ]] && plugin="z"
+                [[ -n "$plugin" ]] && add_plugin_to_zshrc "$plugin"
             done <<< "$selected"
             ;;
-        " 3)"*)
-            # هنا تم إصلاح المشكلة الجذرية
+        *"List Active"*)
             local active_list
             active_list=$(get_active_plugins)
             
@@ -262,7 +271,7 @@ action_manage_plugins() {
                 printf "%b" "$formatted" | gum style --border rounded --padding "1 2" --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" "Active Plugins | $(arb 'الإضافات المفعلة')"
             fi
             ;;
-        " 4)"*)
+        *"Remove Plugin"*)
             local active_list to_remove
             active_list=$(get_active_plugins)
             [[ -z "$active_list" ]] && { warn "No plugins registered"; return; }
@@ -270,8 +279,8 @@ action_manage_plugins() {
             to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
             [[ -z "$to_remove" ]] && return
             
-            # إزالة الإضافة بأمان من ملف zshrc
-            sed -i -E "s/ ?\b${to_remove}\b ?//g" "$HOME/.zshrc"
+            # حذف دقيق جداً: يبحث فقط داخل أقواس plugins ويحذف الكلمة بدقة
+            sed -i "/plugins=(/,/)/ s/ *\b${to_remove}\b *//g" "$HOME/.zshrc"
             ok "Plugin removed: $to_remove"
             ;;
     esac
