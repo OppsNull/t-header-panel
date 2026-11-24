@@ -3,13 +3,13 @@
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
 #  Professional unified menu for the T-Header project
-#  Version : 3.2.1 (RTL & Plugin Menu Fix)
+#  Version : 3.2.2 (Smart Update Checker)
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -o pipefail
-readonly VERSION="3.2.1"
+readonly VERSION="3.2.2"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -27,12 +27,25 @@ readonly CLR_DIM=240
 
 mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 
-# ─── Update Checker ──────────────────────────────────────────────────
+# ─── Smart Update Checker ────────────────────────────────────────────
 REMOTE_VERSION=""
 HAS_UPDATE=false
+UPDATE_ERROR=false
 
 check_for_updates() {
-    REMOTE_VERSION=$(curl -fsSL --max-time 3 "$REPO_URL" 2>/dev/null | grep '^readonly VERSION=' | cut -d'"' -f2)
+    UPDATE_ERROR=false
+    local raw_content
+    # تحميل الملف في الذاكرة
+    raw_content=$(curl -fsSL --max-time 4 "$REPO_URL" 2>/dev/null)
+    
+    if [[ -z "$raw_content" ]]; then
+        UPDATE_ERROR=true
+        return
+    fi
+
+    # استخراج رقم الإصدار
+    REMOTE_VERSION=$(echo "$raw_content" | grep '^readonly VERSION=' | head -n 1 | cut -d'"' -f2)
+    
     if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$VERSION" ]]; then
         HAS_UPDATE=true
     fi
@@ -66,6 +79,8 @@ banner() {
     local update_msg=""
     if [[ "$HAS_UPDATE" == "true" ]]; then
         update_msg="$(arb "🚀 تحديث جديد متوفر: v$REMOTE_VERSION (اختر تحديث اللوحة)")"
+    elif [[ "$UPDATE_ERROR" == "true" ]]; then
+        update_msg="$(arb "⚠️ تعذر الاتصال بجيت هب لفحص التحديثات")"
     fi
 
     gum style \
@@ -165,7 +180,6 @@ action_manage_plugins() {
     case "$choice" in
         *"خارجية"*|*"External"*)
             local selected
-            # استخدام الأسماء الإنجليزية فقط لتجنب مشاكل العرض في التيرمكس
             selected=$(gum choose --no-limit --header "$(arb 'اختر الإضافات (مسافة للتحديد، Enter للتأكيد):')" --cursor "▶ " \
                 "zsh-autosuggestions" \
                 "zsh-syntax-highlighting" \
@@ -268,6 +282,10 @@ action_backup() {
 
 action_update_tool() {
     check_for_updates
+    if [[ "$UPDATE_ERROR" == "true" ]]; then
+        warn "$(arb 'فشل الاتصال بجيت هب. تأكد من الإنترنت أو انتظر دقيقة (كاش جيت هب).')"
+        return
+    fi
     if [[ "$HAS_UPDATE" == "false" ]]; then
         ok "$(arb 'أنت تستخدم أحدث إصدار بالفعل.')"
         return
