@@ -3,28 +3,30 @@
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
 #  Professional unified menu for the T-Header project
-#  Version : 2.0.0
+#  Version : 3.0.0
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -o pipefail
-readonly VERSION="2.0.0"
+readonly VERSION="3.0.0"
 readonly APP_NAME="T-Header Control Panel"
-readonly THEADER_DIR="$HOME/.config/theader"
-readonly TPT_DIR="$THEADER_DIR/tpt"
-readonly LOGO_DIR="$THEADER_DIR/logo"
+readonly CONFIG_DIR="$HOME/.config/theader"
+readonly LOGO_DIR="$CONFIG_DIR/logo"
+readonly TPT_DIR="$CONFIG_DIR/tpt"
 readonly BACKUP_DIR="$HOME/.theader-backups"
-readonly LOG_FILE="$HOME/.config/theader/control-panel.log"
+readonly LOG_FILE="$CONFIG_DIR/control-panel.log"
 
 readonly CLR_PRIMARY=212
 readonly CLR_ACCENT=141
 readonly CLR_SUCCESS=82
 readonly CLR_WARN=220
 readonly CLR_ERROR=196
+readonly CLR_DIM=240
 
-mkdir -p "$THEADER_DIR" "$BACKUP_DIR" 2>/dev/null
+mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 
+# ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
 arb() {
@@ -42,24 +44,41 @@ warn() { log WARN  "$*"; gum style --foreground "$CLR_WARN"    "  ⚠  $*"; }
 err()  { log ERR   "$*"; gum style --foreground "$CLR_ERROR"   "  ✗  $*"; }
 confirm() { gum confirm --default=false "$(arb "$1")"; }
 
+# ─── Branding ────────────────────────────────────────────────────────
 banner() {
     clear
-    if has figlet && has lolcat; then figlet -f small "T-HEADER" 2>/dev/null | lolcat -f 2>/dev/null; fi
-    gum style --border double --padding "0 3" --foreground "$CLR_PRIMARY" --border-foreground "$CLR_PRIMARY" \
-        "⚡  ${APP_NAME}" "$(arb 'لوحة تحكم موحدة لمشروع T-Header')" "v${VERSION}  •  Termux Customization Suite"
+    if has figlet && has lolcat; then
+        figlet -f small "T-HEADER" 2>/dev/null | lolcat -f 2>/dev/null
+    fi
+    gum style \
+        --border double --padding "0 3" \
+        --foreground "$CLR_PRIMARY" --border-foreground "$CLR_PRIMARY" \
+        "⚡  ${APP_NAME}" \
+        "$(arb 'لوحة تحكم موحدة لمشروع T-Header')" \
+        "v${VERSION}  •  Termux Customization Suite"
     echo
 }
 
+# ─── Built-in Keyboard Layouts ───────────────────────────────────────
 generate_keyboards() {
-    mkdir -p "$TPT_DIR"
+    [[ -f "$TPT_DIR/kb-default.properties" ]] || echo -e "extra-keys = []" > "$TPT_DIR/kb-default.properties"
     [[ -f "$TPT_DIR/kb-standard.properties" ]] || cat > "$TPT_DIR/kb-standard.properties" <<'EOF'
-extra-keys = [ ['ESC','/','-','HOME','UP','END','PGUP'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'] ]
+extra-keys = [ \
+ ['ESC','/','-','HOME','UP','END','PGUP'], \
+ ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'] \
+]
 EOF
     [[ -f "$TPT_DIR/kb-programmer.properties" ]] || cat > "$TPT_DIR/kb-programmer.properties" <<'EOF'
-extra-keys = [ ['ESC','TAB','CTRL','ALT','/','-','|','~','HOME','END'], ['1','2','3','4','5','6','7','8','9','0'], ['!','@','#','$','%','^','&','*','(',')'], ['LEFT','DOWN','UP','RIGHT','PGUP','PGDN','BKSP','ENTER'] ]
+extra-keys = [ \
+ ['ESC','TAB','CTRL','ALT','/','-','|','~','HOME','END'], \
+ ['1','2','3','4','5','6','7','8','9','0'], \
+ ['!','@','#','$','%','^','&','*','(',')'], \
+ ['LEFT','DOWN','UP','RIGHT','PGUP','PGDN','BKSP','ENTER'] \
+]
 EOF
 }
 
+# ─── Actions ─────────────────────────────────────────────────────────
 action_install_packages() {
     msg "$(arb 'تثبيت الحزم الأساسية...')"
     gum spin --spinner dot --title "$(arb 'تحديث الحزم...')" -- bash -c 'pkg update -y && pkg upgrade -y' >/dev/null 2>&1
@@ -101,21 +120,21 @@ action_setup_zsh() {
 
 action_change_logo() {
     if [[ ! -d "$LOGO_DIR" || -z "$(ls -A "$LOGO_DIR" 2>/dev/null)" ]]; then
-        err "$(arb "لا شعارات في: $LOGO_DIR")"; return
+        err "$(arb "لا توجد شعارات في: $LOGO_DIR")"; return
     fi
     local logo indent
     logo=$(ls "$LOGO_DIR" | gum choose --header "$(arb 'اختر الشعار:')" --cursor "▶ ") || return
     indent=$(gum choose --header "$(arb 'المسافة البادئة:')" 2 3 4 5 6) || indent=2
-    cp "$LOGO_DIR/$logo" "$THEADER_DIR/active.logo"
-    printf '%s\n' "$indent" > "$THEADER_DIR/indent.cfg"
-    ok "$(arb "الشعار: $logo (إزاحة $indent)")"
+    cp "$LOGO_DIR/$logo" "$CONFIG_DIR/active.logo"
+    printf '%s\n' "$indent" > "$CONFIG_DIR/indent.cfg"
+    ok "$(arb "تم تطبيق الشعار: $logo (إزاحة $indent)")"
 }
 
 action_change_title() {
     local title
-    title=$(gum input --header "$(arb 'اكتب العنوان:')" --placeholder "T-Header" --prompt "› ") || return
+    title=$(gum input --header "$(arb 'اكتب العنوان الجديد:')" --placeholder "T-Header" --prompt "› ") || return
     [[ -z "$title" ]] && return
-    printf '%s\n' "$title" > "$THEADER_DIR/title.cfg"
+    printf '%s\n' "$title" > "$CONFIG_DIR/title.cfg"
     ok "$(arb "تم حفظ العنوان: $title")"
 }
 
@@ -128,7 +147,7 @@ action_change_keyboard() {
     mkdir -p "$HOME/.termux"
     cp "$TPT_DIR/$file" "$HOME/.termux/termux.properties"
     termux-reload-settings 2>/dev/null
-    ok "$(arb "تم تطبيق: $file")"
+    ok "$(arb "تم تطبيق تخطيط الكيبورد: $file")"
 }
 
 action_change_theme() {
@@ -139,7 +158,7 @@ action_change_theme() {
     theme=$(printf '%s\n' "$themes" | gum filter --header "$(arb 'ابحث واختر الثيم:')" --height 15) || return
     [[ -z "$theme" ]] && return
     sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$theme\"/" "$HOME/.zshrc"
-    ok "$(arb "الثيم: $theme")"
+    ok "$(arb "تم تغيير الثيم إلى: $theme")"
 }
 
 action_toggle_autocomplete() {
@@ -158,8 +177,8 @@ action_backup() {
     local ts; ts=$(date +%s)
     [[ -f "$HOME/.zshrc" ]] && cp "$HOME/.zshrc" "$BACKUP_DIR/zshrc.$ts"
     [[ -f "$HOME/.termux/termux.properties" ]] && cp "$HOME/.termux/termux.properties" "$BACKUP_DIR/termux.$ts"
-    [[ -d "$THEADER_DIR" ]] && tar -czf "$BACKUP_DIR/theader.$ts.tar.gz" -C "$HOME/.config" theader 2>/dev/null
-    ok "$(arb "نسخة احتياطية محفوظة في: $BACKUP_DIR")"
+    [[ -d "$CONFIG_DIR" ]] && tar -czf "$BACKUP_DIR/theader.$ts.tar.gz" -C "$HOME/.config" theader 2>/dev/null
+    ok "$(arb "تم حفظ نسخة احتياطية في: $BACKUP_DIR")"
 }
 
 action_install_all() {
@@ -168,66 +187,88 @@ action_install_all() {
     action_setup_zsh
     generate_keyboards
     if [[ -d "$LOGO_DIR" && -n "$(ls -A "$LOGO_DIR" 2>/dev/null)" ]]; then
-        cp "$LOGO_DIR/$(ls "$LOGO_DIR" | head -1)" "$THEADER_DIR/active.logo"
-        printf '2\n' > "$THEADER_DIR/indent.cfg"
+        cp "$LOGO_DIR/$(ls "$LOGO_DIR" | head -1)" "$CONFIG_DIR/active.logo"
+        printf '2\n' > "$CONFIG_DIR/indent.cfg"
     fi
     mkdir -p "$HOME/.termux" && cp "$TPT_DIR/kb-standard.properties" "$HOME/.termux/termux.properties"
     termux-reload-settings 2>/dev/null
     [[ -f "$HOME/.zshrc" ]] && sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"agnoster\"/" "$HOME/.zshrc"
-    ok "$(arb 'اكتمل التثبيت الكامل — أعد تشغيل Termux')"
+    ok "$(arb 'اكتمل التثبيت الكامل — يرجى إعادة تشغيل Termux')"
 }
 
 action_remove() {
     confirm "$(arb 'إزالة T-Header بالكامل؟ (سيتم عمل نسخة احتياطية أولاً)')" || return
     action_backup
-    rm -rf "$THEADER_DIR" && rm -f "$HOME/.termux/termux.properties"
+    rm -rf "$CONFIG_DIR" && rm -f "$HOME/.termux/termux.properties"
     sed -i '/theader/d' "$HOME/.zshrc" 2>/dev/null
-    ok "$(arb 'تمت الإزالة')"
+    ok "$(arb 'تمت إزالة T-Header')"
 }
 
+# ─── Main Menu ────────────────────────────────────────────────────────
 main_loop() {
     while true; do
         banner
         local choice
         choice=$(gum choose --header "$(arb 'اختر من القائمة:')" --cursor "▶ " --height 18 \
-            "$(arb '──  Setup  ──────────────────────────')" \
-            "$(arb '📦  Install Packages            تثبيت الحزم')" \
-            "$(arb '🐚  Setup Zsh + Oh-my-zsh       إعداد Zsh')" \
-            "$(arb '──  Customize  ──────────────────────')" \
-            "$(arb '🎨  Change Logo                 تغيير الشعار')" \
-            "$(arb '📝  Change Title                تغيير العنوان')" \
-            "$(arb '⌨️   Change Keyboard             تغيير الكيبورد')" \
-            "$(arb '🎭  Change ZSH Theme            تغيير الثيم')" \
-            "$(arb '💡  Toggle Autocomplete         الإكمال التلقائي')" \
-            "$(arb '──  Maintenance  ────────────────────')" \
-            "$(arb '💾  Backup Configuration        نسخة احتياطية')" \
-            "$(arb '🚀  Install Everything          تثبيت الكل')" \
-            "$(arb '🗑️   Remove T-Header             إزالة')" \
-            "$(arb '❌  Exit                        خروج')"
+            "$(arb '──  الإعداد  ──────────────────────────')" \
+            "$(arb '📦  تثبيت الحزم               Install Packages')" \
+            "$(arb '🐚  إعداد Zsh + Oh-my-zsh       Setup Zsh')" \
+            "$(arb '──  التخصيص  ────────────────────────')" \
+            "$(arb '🎨  تغيير الشعار                 Change Logo')" \
+            "$(arb '📝  تغيير العنوان                Change Title')" \
+            "$(arb '⌨️   تغيير الكيبورد             Change Keyboard')" \
+            "$(arb '🎭  تغيير ثيم ZSH              Change Theme')" \
+            "$(arb '💡  تبديل الإكمال التلقائي     Toggle Autocomplete')" \
+            "$(arb '──  الصيانة  ────────────────────────')" \
+            "$(arb '💾  نسخة احتياطية               Backup')" \
+            "$(arb '🚀  تثبيت الكل                  Install Everything')" \
+            "$(arb '🗑️   إزالة T-Header             Remove')" \
+            "$(arb '❌  خروج                        Exit')"
         ) || break
 
         echo
         case "$choice" in
             *"──"*) continue ;;
-            *"Install Packages"*) action_install_packages ;;
-            *"Setup Zsh"*) action_setup_zsh ;;
-            *"Change Logo"*) action_change_logo ;;
-            *"Change Title"*) action_change_title ;;
-            *"Change Keyboard"*) action_change_keyboard ;;
-            *"Change ZSH Theme"*) action_change_theme ;;
-            *"Toggle Autocomplete"*) action_toggle_autocomplete ;;
-            *"Backup"*) action_backup ;;
-            *"Install Everything"*) action_install_all ;;
-            *"Remove T-Header"*) action_remove ;;
-            *"Exit"*|"") break ;;
+            *"تثبيت الحزم"*|*"Install Packages"*) action_install_packages ;;
+            *"إعداد Zsh"*|*"Setup Zsh"*) action_setup_zsh ;;
+            *"تغيير الشعار"*|*"Change Logo"*) action_change_logo ;;
+            *"تغيير العنوان"*|*"Change Title"*) action_change_title ;;
+            *"تغيير الكيبورد"*|*"Change Keyboard"*) action_change_keyboard ;;
+            *"تغيير ثيم"*|*"Change Theme"*) action_change_theme ;;
+            *"الإكمال التلقائي"*|*"Toggle Autocomplete"*) action_toggle_autocomplete ;;
+            *"نسخة احتياطية"*|*"Backup"*) action_backup ;;
+            *"تثبيت الكل"*|*"Install Everything"*) action_install_all ;;
+            *"إزالة T-Header"*|*"Remove"*) action_remove ;;
+            *"خروج"*|*"Exit"*|"") break ;;
         esac
         echo
         confirm "العودة للقائمة الرئيسية؟" || break
     done
+    clear
+    gum style --foreground "$CLR_DIM" "$(arb 'وداعاً 👋')"
 }
 
-has gum || { echo "Installing gum..."; pkg install -y gum || exit 1; }
+# ─── CLI ──────────────────────────────────────────────────────────────
+case "${1:-}" in
+    -h|--help)
+        cat <<EOF
+${APP_NAME} v${VERSION}
+Usage: $(basename "$0") [OPTION]
+Options:
+  -h, --help      Show this help
+  -v, --version   Show version
+  -l, --log       Open log file
+  (no args)       Launch interactive menu
+EOF
+        exit 0 ;;
+    -v|--version) echo "${APP_NAME} v${VERSION}"; exit 0 ;;
+    -l|--log)     [[ -f "$LOG_FILE" ]] && less "$LOG_FILE" || echo "No log yet"; exit 0 ;;
+esac
+
+# ─── Entrypoint ───────────────────────────────────────────────────────
+has gum     || { echo "Installing gum...";     pkg install -y gum     || exit 1; }
 has fribidi || pkg install -y fribidi >/dev/null 2>&1 || true
 
 generate_keyboards
+log INFO "Session started (v${VERSION})"
 main_loop

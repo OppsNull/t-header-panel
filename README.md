@@ -4,7 +4,7 @@
 
 **A professional, unified control panel for the T-Header project in Termux.**
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Termux-orange.svg)]()
 
@@ -25,4 +25,4 @@
 Run the following command in Termux:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/OppsNull/t-header-panel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/OppsNull/t-header-panel/main/install.sh | bash
