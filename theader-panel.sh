@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 4.2.0 (Bulletproof Parsing)
+#  Version : 4.3.0 (Absolute Bulletproof Edition)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="4.2.0"
+readonly VERSION="4.3.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -135,26 +135,79 @@ action_setup_zsh() {
     ok "Zsh setup completed | $(arb 'تم إعداد Zsh')"
 }
 
-# ─── Zsh Plugin Manager (Bulletproof) ────────────────────────────────
+# ─── Zsh Plugin Manager (Bulletproof Edition) ────────────────────────
+# استخراج الإضافات بدقة من السطر النظيف
 get_active_plugins() {
-    # استخراج كل الإضافات من بين القوسين مهما كان شكلها
     if [[ -f "$HOME/.zshrc" ]]; then
-        sed -n '/plugins=(/,/)/p' "$HOME/.zshrc" 2>/dev/null | tr -d '\n' | sed -E 's/^plugins=\(//; s/\)$//' | tr ' ' '\n' | grep -v '^$' | sort -u
+        grep -E "^[[:space:]]*plugins=\(" "$HOME/.zshrc" | sed -E 's/.*plugins=\(//; s/\).*//' | tr -s ' ' '\n' | grep -v '^$' | sort -u
     fi
 }
 
-add_plugin_to_zshrc() {
-    local plugin="$1"
+# إعادة بناء بلوك الإضافات بالكامل ليكون في سطر واحد نظيف
+update_zshrc_plugins() {
+    local action="$1"
+    local target_plugin="$2"
     local zrc="$HOME/.zshrc"
-    
-    if grep -qw "$plugin" "$zrc" 2>/dev/null; then
-        warn "Plugin already enabled: $plugin | $(arb 'الإضافة مفعلة بالفعل')"
-        return 0
+    local temp_zrc="${zrc}.tmp"
+
+    local plugins=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && plugins+=("$p")
+    done < <(get_active_plugins)
+
+    if [[ "$action" == "add" ]]; then
+        for p in "${plugins[@]}"; do
+            if [[ "$p" == "$target_plugin" ]]; then
+                warn "Plugin already enabled: $target_plugin | $(arb 'الإضافة مفعلة بالفعل')"
+                return 0
+            fi
+        done
+        plugins+=("$target_plugin")
+    elif [[ "$action" == "remove" ]]; then
+        local new_plugins=()
+        for p in "${plugins[@]}"; do
+            if [[ "$p" != "$target_plugin" ]]; then
+                new_plugins+=("$p")
+            fi
+        done
+        plugins=("${new_plugins[@]}")
     fi
+
+    local plugin_str=""
+    for p in "${plugins[@]}"; do
+        plugin_str+="$p "
+    done
+
+    # استخدام awk لمسح البلوك القديم (حتى لو متعدد الأسطر) ووضع سطر واحد نظيف
+    awk -v p_str="plugins=( $plugin_str)" '
+        /^[[:space:]]*#/ { print; next }
+        /^[[:space:]]*plugins=\(/ {
+            if (!done) {
+                print p_str
+                done=1
+            }
+            in_block=1
+            next
+        }
+        in_block {
+            if (/^[[:space:]]*\)/) { in_block=0 }
+            next
+        }
+        { print }
+    ' "$zrc" > "$temp_zrc"
     
-    # حقن الإضافة بأمان بعد قوس الفتح مباشرة
-    sed -i "/^plugins=(/ s/$/ ${plugin} /" "$zrc"
-    ok "Plugin enabled: $plugin | $(arb 'تم تفعيل الإضافة')"
+    # لو مفيش بلوك plugins أصلاً، نضيفه في الآخر
+    if ! grep -q "^[[:space:]]*plugins=(" "$temp_zrc"; then
+        echo "plugins=( $plugin_str)" >> "$temp_zrc"
+    fi
+
+    mv "$temp_zrc" "$zrc"
+
+    if [[ "$action" == "add" ]]; then
+        ok "Plugin enabled: $target_plugin | $(arb 'تم تفعيل الإضافة')"
+    else
+        ok "Plugin removed: $target_plugin | $(arb 'تم إزالة الإضافة')"
+    fi
 }
 
 install_omz_plugin() {
@@ -169,7 +222,7 @@ install_omz_plugin() {
             return 1
         fi
     fi
-    add_plugin_to_zshrc "$name"
+    update_zshrc_plugins "add" "$name"
 }
 
 action_manage_plugins() {
@@ -213,7 +266,6 @@ action_manage_plugins() {
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
                 local plugin=""
-                # استخراج الإضافة بناءً على وجود اسمها في السطر (أقوى طريقة)
                 [[ "$line" == *"zsh-autosuggestions"* ]] && plugin="zsh-autosuggestions"
                 [[ "$line" == *"zsh-syntax-highlighting"* ]] && plugin="zsh-syntax-highlighting"
                 [[ "$line" == *"zsh-completions"* ]] && plugin="zsh-completions"
@@ -241,16 +293,9 @@ action_manage_plugins() {
                 fzf --multi --reverse --height 100% --border --info=inline --prompt "Select built-in plugins > " --pointer "▶ ") || return
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                local plugin=""
-                [[ "$line" == *"git"* ]] && plugin="git"
-                [[ "$line" == *"extract"* ]] && plugin="extract"
-                [[ "$line" == *"colored-man-pages"* ]] && plugin="colored-man-pages"
-                [[ "$line" == *"command-not-found"* ]] && plugin="command-not-found"
-                [[ "$line" == *"sudo"* ]] && plugin="sudo"
-                [[ "$line" == *"web-search"* ]] && plugin="web-search"
-                [[ "$line" == *"cp"* ]] && plugin="cp"
-                [[ "$line" == *"z"* ]] && plugin="z"
-                [[ -n "$plugin" ]] && add_plugin_to_zshrc "$plugin"
+                local plugin
+                plugin=$(echo "$line" | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//')
+                update_zshrc_plugins "add" "$plugin"
             done <<< "$selected"
             ;;
         *"List Active"*)
@@ -260,15 +305,15 @@ action_manage_plugins() {
             if [[ -z "$active_list" ]]; then
                 warn "No active plugins found. | $(arb 'لا توجد إضافات مفعلة.')"
             else
-                local formatted=""
+                local output=""
                 local count=1
                 while IFS= read -r plugin; do
                     [[ -z "$plugin" ]] && continue
-                    formatted+="  $count) $plugin\n"
+                    output+="  $count) $plugin\n"
                     ((count++))
                 done <<< "$active_list"
                 
-                printf "%b" "$formatted" | gum style --border rounded --padding "1 2" --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" "Active Plugins | $(arb 'الإضافات المفعلة')"
+                echo -e "$output" | gum style --border rounded --padding "1 2" --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" "Active Plugins | $(arb 'الإضافات المفعلة')"
             fi
             ;;
         *"Remove Plugin"*)
@@ -279,9 +324,7 @@ action_manage_plugins() {
             to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
             [[ -z "$to_remove" ]] && return
             
-            # حذف دقيق جداً: يبحث فقط داخل أقواس plugins ويحذف الكلمة بدقة
-            sed -i "/plugins=(/,/)/ s/ *\b${to_remove}\b *//g" "$HOME/.zshrc"
-            ok "Plugin removed: $to_remove"
+            update_zshrc_plugins "remove" "$to_remove"
             ;;
     esac
 }
