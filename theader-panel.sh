@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 3.9.1 (Installed Indicator)
+#  Version : 4.0.0 (Full Screen & Clean UI)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="3.9.1"
+readonly VERSION="4.0.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -33,6 +33,7 @@ mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
+# دالة عكس النص العربي
 arb() {
     if has fribidi; then
         printf '%s' "$1" | fribidi --nopad 2>/dev/null || printf '%s' "$1"
@@ -41,6 +42,7 @@ arb() {
     fi
 }
 
+# دالة تأكيد آمنة
 confirm_action() {
     local msg="$1"
     local ans
@@ -74,7 +76,7 @@ check_for_updates() {
 
 # ─── Branding ────────────────────────────────────────────────────────
 banner() {
-    clear
+    printf "\033c" # مسح الشاشة بالكامل بشكل صارم لمنع التداخل
     if has figlet && has lolcat; then
         figlet -f small "T-HEADER" 2>/dev/null | lolcat -f 2>/dev/null || true
     fi
@@ -140,7 +142,6 @@ add_plugin_to_zshrc() {
     local plugin="$1"
     local zrc="$HOME/.zshrc"
     
-    # لو الإضافة موجودة بالفعل في الملف
     if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then
         warn "Plugin already enabled: $plugin | $(arb 'الإضافة مفعلة بالفعل')"
         return 0
@@ -159,7 +160,6 @@ install_omz_plugin() {
     local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
     mkdir -p "$zc/plugins"
     
-    # لو المجلد مش موجود، ننزله
     if [[ ! -d "$zc/plugins/$name" ]]; then
         msg "Downloading plugin: $name..."
         if ! git clone --depth=1 "$repo" "$zc/plugins/$name"; then
@@ -176,6 +176,7 @@ action_manage_plugins() {
         return
     fi
 
+    # استخدام 100% من الشاشة لمنع التداخل
     local choice
     choice=$(printf "%s\n" \
         " 1) Install External | $(arb 'تثبيت إضافات خارجية')" \
@@ -183,15 +184,13 @@ action_manage_plugins() {
         " 3) List Active      | $(arb 'عرض الإضافات المفعلة')" \
         " 4) Remove Plugin    | $(arb 'إزالة إضافة')" \
         " 5) Back             | $(arb 'رجوع')" | \
-        fzf --reverse --height 10 --prompt "Plugin Manager > " --pointer "▶ ") || return
+        fzf --reverse --height 100% --border --info=inline --prompt "Plugin Manager > " --pointer "▶ ") || return
 
     case "$choice" in
         " 1)"*)
-            # جلب الإضافات المفعلة حالياً
             local active_list
             active_list=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g')
 
-            # تجهيز علامة الصح
             local chk1="[ ]" chk2="[ ]" chk3="[ ]" chk4="[ ]" chk5="[ ]" chk6="[ ]"
             grep -qw "zsh-autosuggestions" <<< "$active_list" && chk1="[✓]"
             grep -qw "zsh-syntax-highlighting" <<< "$active_list" && chk2="[✓]"
@@ -208,11 +207,10 @@ action_manage_plugins() {
                 " 4) $chk4 fzf-tab | $(arb 'بحث تفاعلي بالملفات')" \
                 " 5) $chk5 zsh-history-substring-search | $(arb 'بحث في الأوامر')" \
                 " 6) $chk6 zsh-you-should-use | $(arb 'تذكير بالاختصارات')" | \
-                fzf --multi --reverse --height 12 --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
+                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
 
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                # استخراج اسم الإضافة بدقة (مسح الرقم، وعلامة الصح، والمسافات)
                 local plugin_name
                 plugin_name=$(echo "$line" | cut -d'|' -f1 | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*\[.\][[:space:]]*//' | tr -d ' ')
                 
@@ -231,7 +229,7 @@ action_manage_plugins() {
             selected=$(printf "%s\n" \
                 " 1) git" " 2) extract" " 3) colored-man-pages" " 4) command-not-found" \
                 " 5) sudo" " 6) web-search" " 7) cp" " 8) z" | \
-                fzf --multi --reverse --height 12 --prompt "Select built-in plugins > " --pointer "▶ ") || return
+                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select built-in plugins > " --pointer "▶ ") || return
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
                 local plugin
@@ -249,7 +247,7 @@ action_manage_plugins() {
             local active to_remove
             active=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g' | tr ' ' '\n' | grep -v '^$' || true)
             [[ -z "$active" ]] && { warn "No plugins registered"; return; }
-            to_remove=$(echo "$active" | fzf --reverse --height 10 --prompt "Select plugin to remove > " --pointer "▶ ") || return
+            to_remove=$(echo "$active" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
             [[ -z "$to_remove" ]] && return
             sed -i -E "s/ ?\b${to_remove}\b ?//g" "$HOME/.zshrc"
             ok "Plugin removed: $to_remove"
@@ -263,8 +261,8 @@ action_change_logo() {
         err "No logos in: $LOGO_DIR"; return
     fi
     local logo indent
-    logo=$(ls "$LOGO_DIR" | fzf --reverse --height 10 --prompt "Select Logo > " --pointer "▶ ") || return
-    indent=$(printf "%s\n" 2 3 4 5 6 | fzf --reverse --height 7 --prompt "Indent > " --pointer "▶ ") || indent=2
+    logo=$(ls "$LOGO_DIR" | fzf --reverse --height 100% --border --info=inline --prompt "Select Logo > " --pointer "▶ ") || return
+    indent=$(printf "%s\n" 2 3 4 5 6 | fzf --reverse --height 100% --border --info=inline --prompt "Indent > " --pointer "▶ ") || indent=2
     cp "$LOGO_DIR/$logo" "$CONFIG_DIR/active.logo"
     printf '%s\n' "$indent" > "$CONFIG_DIR/indent.cfg"
     ok "Logo applied: $logo"
@@ -281,7 +279,7 @@ action_change_title() {
 action_change_keyboard() {
     generate_keyboards
     local file
-    file=$(ls "$TPT_DIR" 2>/dev/null | fzf --reverse --height 10 --prompt "Select Layout > " --pointer "▶ ") || return
+    file=$(ls "$TPT_DIR" 2>/dev/null | fzf --reverse --height 100% --border --info=inline --prompt "Select Layout > " --pointer "▶ ") || return
     [[ -z "$file" ]] && return
     [[ -f "$HOME/.termux/termux.properties" ]] && cp "$HOME/.termux/termux.properties" "$BACKUP_DIR/termux.$(date +%s)"
     mkdir -p "$HOME/.termux"
@@ -295,7 +293,7 @@ action_change_theme() {
     [[ ! -d "$t" && ! -d "$c" ]] && { err "Oh-my-zsh not installed."; return; }
     local themes theme
     themes=$( (ls "$t" 2>/dev/null; ls "$c" 2>/dev/null) | sed 's/\.zsh-theme$//' | sort -u)
-    theme=$(printf '%s\n' "$themes" | fzf --reverse --height 15 --prompt "Search Theme > " --pointer "▶ ") || return
+    theme=$(printf '%s\n' "$themes" | fzf --reverse --height 100% --border --info=inline --prompt "Search Theme > " --pointer "▶ ") || return
     [[ -z "$theme" ]] && return
     sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$theme\"/" "$HOME/.zshrc"
     ok "Theme changed to: $theme"
@@ -363,6 +361,7 @@ main_loop() {
             update_opt="11) 🔄 Check Updates    | $(arb 'فحص التحديثات')"
         fi
 
+        # استخدام 100% من الشاشة
         choice=$(printf "%s\n" \
             " 1) ── Setup       | $(arb 'الإعداد') ──────────────────────────" \
             " 2) 📦 Install Packages  | $(arb 'تثبيت الحزم')" \
@@ -379,7 +378,7 @@ main_loop() {
             "13) 🚀 Install Everything| $(arb 'تثبيت الكل')" \
             "14) 🗑️  Remove T-Header   | $(arb 'إزالة')" \
             "15) ❌ Exit              | $(arb 'خروج')" | \
-            fzf --reverse --height 22 --prompt "Select (type number or use arrows) > " --pointer "▶ ") || break
+            fzf --reverse --height 100% --border --info=inline --prompt "Select (type number or use arrows) > " --pointer "▶ ") || break
 
         echo
         case "$choice" in
