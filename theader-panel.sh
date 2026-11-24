@@ -3,13 +3,13 @@
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
 #  Professional unified menu for the T-Header project
-#  Version : 3.0.0
+#  Version : 3.1.0 (Zsh Plugin Manager Edition)
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -o pipefail
-readonly VERSION="3.0.0"
+readonly VERSION="3.1.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly CONFIG_DIR="$HOME/.config/theader"
 readonly LOGO_DIR="$CONFIG_DIR/logo"
@@ -78,7 +78,7 @@ extra-keys = [ \
 EOF
 }
 
-# ─── Actions ─────────────────────────────────────────────────────────
+# ─── Core Actions ────────────────────────────────────────────────────
 action_install_packages() {
     msg "$(arb 'تثبيت الحزم الأساسية...')"
     gum spin --spinner dot --title "$(arb 'تحديث الحزم...')" -- bash -c 'pkg update -y && pkg upgrade -y' >/dev/null 2>&1
@@ -105,19 +105,96 @@ action_setup_zsh() {
     fi
 
     [[ -f "$HOME/.zshrc" ]] || cp "$HOME/.oh-my-zsh/templates/zshrc.zsh-template" "$HOME/.zshrc"
-
-    local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-    [[ -d "$zc/plugins/zsh-autosuggestions" ]] || git clone -q --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$zc/plugins/zsh-autosuggestions" 2>/dev/null
-    [[ -d "$zc/plugins/zsh-syntax-highlighting" ]] || git clone -q --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting "$zc/plugins/zsh-syntax-highlighting" 2>/dev/null
-
-    if ! grep -q "zsh-autosuggestions" "$HOME/.zshrc" 2>/dev/null; then
-        sed -i 's/^plugins=(.*)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' "$HOME/.zshrc"
-    fi
-    
-    chsh -s zsh >/dev/null 2>&1 || true
     ok "$(arb 'تم إعداد Zsh بنجاح')"
 }
 
+# ─── Zsh Plugin Manager ──────────────────────────────────────────────
+add_plugin_to_zshrc() {
+    local plugin="$1"
+    local zrc="$HOME/.zshrc"
+    if ! grep -qw "$plugin" "$zrc"; then
+        sed -i "s/^plugins=(\(.*\))/plugins=(\1 $plugin)/" "$zrc"
+        ok "$(arb "تم تفعيل الإضافة: $plugin")"
+    else
+        warn "$(arb "الإضافة مفعلة بالفعل: $plugin")"
+    fi
+}
+
+install_omz_plugin() {
+    local name="$1" repo="$2"
+    local zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+    if [[ ! -d "$zc/plugins/$name" ]]; then
+        gum spin --spinner dot --title "$(arb "جاري تحميل $name...")" -- \
+            git clone -q --depth=1 "$repo" "$zc/plugins/$name" >/dev/null 2>&1
+    fi
+    add_plugin_to_zshrc "$name"
+}
+
+action_manage_plugins() {
+    if [[ ! -f "$HOME/.zshrc" ]]; then
+        err "$(arb '.zshrc غير موجود، قم بإعداد Zsh أولاً')"; return
+    fi
+
+    local choice
+    choice=$(gum choose --header "$(arb 'إدارة إضافات Zsh:')" --cursor "▶ " \
+        "$(arb '➕ تثبيت إضافات خارجية (External)')" \
+        "$(arb '➕ تفعيل إضافات داخلية (Built-in)')" \
+        "$(arb '📋 عرض الإضافات المفعلة (List Active)')" \
+        "$(arb '🗑️  إزالة إضافة (Remove Plugin)')" \
+        "$(arb '🔙 رجوع (Back)')")
+
+    case "$choice" in
+        *"خارجية"*|*"External"*)
+            local selected
+            selected=$(gum choose --no-limit --header "$(arb 'اختر الإضافات (مسافة للتحديد، Enter للتأكيد):')" --cursor "▶ " \
+                "zsh-autosuggestions (اقتراحات تلقائية)" \
+                "zsh-syntax-highlighting (تلوين الأوامر)" \
+                "zsh-completions (إكمال إضافي)" \
+                "fzf-tab (بحث تفاعلي بالملفات)" \
+                "zsh-history-substring-search (بحث في الأوامر)" \
+                "you-should-use (تذكير بالاختصارات)")
+
+            declare -A ext_plugins=(
+                ["zsh-autosuggestions"]="https://github.com/zsh-users/zsh-autosuggestions"
+                ["zsh-syntax-highlighting"]="https://github.com/zsh-users/zsh-syntax-highlighting"
+                ["zsh-completions"]="https://github.com/zsh-users/zsh-completions"
+                ["fzf-tab"]="https://github.com/Aloxaf/fzf-tab"
+                ["zsh-history-substring-search"]="https://github.com/zsh-users/zsh-history-substring-search"
+                ["you-should-use"]="https://github.com/MichaelAquilina/zsh-you-should-use"
+            )
+
+            for item in $selected; do
+                local plugin_name="${item%% *}" # استخراج الاسم فقط قبل المسافة
+                install_omz_plugin "$plugin_name" "${ext_plugins[$plugin_name]}"
+            done
+            ;;
+        *"داخلية"*|*"Built-in"*)
+            local selected
+            selected=$(gum choose --no-limit --header "$(arb 'اختر الإضافات الداخلية:')" --cursor "▶ " \
+                "git" "extract" "colored-man-pages" "command-not-found" "sudo" "web-search" "cp" "z")
+            for plugin in $selected; do
+                add_plugin_to_zshrc "$plugin"
+            done
+            ;;
+        *"عرض"*|*"List"*)
+            local active
+            active=$(grep "^plugins=(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g')
+            gum style --border normal --padding "1 2" --foreground "$CLR_ACCENT" \
+                "$(arb 'الإضافات المفعلة حالياً:')" "" "$active"
+            ;;
+        *"إزالة"*|*"Remove"*)
+            local active to_remove
+            active=$(grep "^plugins=(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g' | tr ' ' '\n' | grep -v '^$')
+            [[ -z "$active" ]] && { warn "$(arb 'لا توجد إضافات مسجلة')"; return; }
+            to_remove=$(echo "$active" | gum choose --header "$(arb 'اختر إضافة للإزالة:')")
+            [[ -z "$to_remove" ]] && return
+            sed -i "s/ $to_remove//g; s/$to_remove //g" "$HOME/.zshrc"
+            ok "$(arb "تم إزالة الإضافة: $to_remove")"
+            ;;
+    esac
+}
+
+# ─── T-Header Customizations ─────────────────────────────────────────
 action_change_logo() {
     if [[ ! -d "$LOGO_DIR" || -z "$(ls -A "$LOGO_DIR" 2>/dev/null)" ]]; then
         err "$(arb "لا توجد شعارات في: $LOGO_DIR")"; return
@@ -127,7 +204,7 @@ action_change_logo() {
     indent=$(gum choose --header "$(arb 'المسافة البادئة:')" 2 3 4 5 6) || indent=2
     cp "$LOGO_DIR/$logo" "$CONFIG_DIR/active.logo"
     printf '%s\n' "$indent" > "$CONFIG_DIR/indent.cfg"
-    ok "$(arb "تم تطبيق الشعار: $logo (إزاحة $indent)")"
+    ok "$(arb "تم تطبيق الشعار: $logo")"
 }
 
 action_change_title() {
@@ -147,7 +224,7 @@ action_change_keyboard() {
     mkdir -p "$HOME/.termux"
     cp "$TPT_DIR/$file" "$HOME/.termux/termux.properties"
     termux-reload-settings 2>/dev/null
-    ok "$(arb "تم تطبيق تخطيط الكيبورد: $file")"
+    ok "$(arb "تم تطبيق الكيبورد: $file")"
 }
 
 action_change_theme() {
@@ -161,18 +238,7 @@ action_change_theme() {
     ok "$(arb "تم تغيير الثيم إلى: $theme")"
 }
 
-action_toggle_autocomplete() {
-    local zrc="$HOME/.zshrc"
-    [[ ! -f "$zrc" ]] && { err "$(arb '.zshrc غير موجود، قم بإعداد Zsh أولاً')"; return; }
-    if grep -q "zsh-autosuggestions" "$zrc"; then
-        sed -i 's/ zsh-autosuggestions//g; s/zsh-autosuggestions //g' "$zrc"
-        warn "$(arb 'تم تعطيل الإكمال التلقائي')"
-    else
-        sed -i 's/plugins=(\(.*\))/plugins=(\1 zsh-autosuggestions)/' "$zrc"
-        ok "$(arb 'تم تفعيل الإكمال التلقائي')"
-    fi
-}
-
+# ─── Maintenance ─────────────────────────────────────────────────────
 action_backup() {
     local ts; ts=$(date +%s)
     [[ -f "$HOME/.zshrc" ]] && cp "$HOME/.zshrc" "$BACKUP_DIR/zshrc.$ts"
@@ -185,11 +251,12 @@ action_install_all() {
     confirm "$(arb 'سيتم تثبيت كل شيء (حزم + Zsh + كيبورد + ثيم). متأكد؟')" || return
     action_install_packages
     action_setup_zsh
+    
+    # تثبيت الإضافات الأساسية افتراضياً
+    install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
+    install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
+
     generate_keyboards
-    if [[ -d "$LOGO_DIR" && -n "$(ls -A "$LOGO_DIR" 2>/dev/null)" ]]; then
-        cp "$LOGO_DIR/$(ls "$LOGO_DIR" | head -1)" "$CONFIG_DIR/active.logo"
-        printf '2\n' > "$CONFIG_DIR/indent.cfg"
-    fi
     mkdir -p "$HOME/.termux" && cp "$TPT_DIR/kb-standard.properties" "$HOME/.termux/termux.properties"
     termux-reload-settings 2>/dev/null
     [[ -f "$HOME/.zshrc" ]] && sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"agnoster\"/" "$HOME/.zshrc"
@@ -209,16 +276,16 @@ main_loop() {
     while true; do
         banner
         local choice
-        choice=$(gum choose --header "$(arb 'اختر من القائمة:')" --cursor "▶ " --height 18 \
+        choice=$(gum choose --header "$(arb 'اختر من القائمة:')" --cursor "▶ " --height 20 \
             "$(arb '──  الإعداد  ──────────────────────────')" \
             "$(arb '📦  تثبيت الحزم               Install Packages')" \
             "$(arb '🐚  إعداد Zsh + Oh-my-zsh       Setup Zsh')" \
             "$(arb '──  التخصيص  ────────────────────────')" \
+            "$(arb '🧩  إدارة إضافات Zsh             Zsh Plugins')" \
             "$(arb '🎨  تغيير الشعار                 Change Logo')" \
             "$(arb '📝  تغيير العنوان                Change Title')" \
             "$(arb '⌨️   تغيير الكيبورد             Change Keyboard')" \
             "$(arb '🎭  تغيير ثيم ZSH              Change Theme')" \
-            "$(arb '💡  تبديل الإكمال التلقائي     Toggle Autocomplete')" \
             "$(arb '──  الصيانة  ────────────────────────')" \
             "$(arb '💾  نسخة احتياطية               Backup')" \
             "$(arb '🚀  تثبيت الكل                  Install Everything')" \
@@ -231,11 +298,11 @@ main_loop() {
             *"──"*) continue ;;
             *"تثبيت الحزم"*|*"Install Packages"*) action_install_packages ;;
             *"إعداد Zsh"*|*"Setup Zsh"*) action_setup_zsh ;;
+            *"إضافات Zsh"*|*"Zsh Plugins"*) action_manage_plugins ;;
             *"تغيير الشعار"*|*"Change Logo"*) action_change_logo ;;
             *"تغيير العنوان"*|*"Change Title"*) action_change_title ;;
             *"تغيير الكيبورد"*|*"Change Keyboard"*) action_change_keyboard ;;
             *"تغيير ثيم"*|*"Change Theme"*) action_change_theme ;;
-            *"الإكمال التلقائي"*|*"Toggle Autocomplete"*) action_toggle_autocomplete ;;
             *"نسخة احتياطية"*|*"Backup"*) action_backup ;;
             *"تثبيت الكل"*|*"Install Everything"*) action_install_all ;;
             *"إزالة T-Header"*|*"Remove"*) action_remove ;;
