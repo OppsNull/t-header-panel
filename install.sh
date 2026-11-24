@@ -3,7 +3,7 @@
 echo -e "\e[1;36m[*] Installing T-Header Control Panel...\e[0m"
 
 # Download the main script
-curl -sL https://raw.githubusercontent.com/YOUR_USERNAME/t-header-panel/main/theader-panel.sh -o "$PREFIX/bin/theader"
+curl -sL https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh -o "$PREFIX/bin/theader"
 
 # Make it executable
 chmod +x "$PREFIX/bin/theader"

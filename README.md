@@ -25,4 +25,4 @@
 Run the following command in Termux:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/YOUR_USERNAME/t-header-panel/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/OppsNull/t-header-panel/main/install.sh | bash
