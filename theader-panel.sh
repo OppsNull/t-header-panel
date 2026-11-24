@@ -2,14 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 4.0.1 (Clean Plugins List)
+#  Version : 4.1.0 (Smart Parsing & Stable UI)
 #  License : MIT
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="4.0.1"
+readonly VERSION="4.1.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -135,20 +135,29 @@ action_setup_zsh() {
     ok "Zsh setup completed | $(arb 'تم إعداد Zsh')"
 }
 
-# ─── Zsh Plugin Manager ──────────────────────────────────────────────
+# ─── Zsh Plugin Manager (Smart Parsing) ──────────────────────────────
+get_active_plugins() {
+    # دالة ذكية لسحب الإضافات سواء كانت في سطر واحد أو متعددة الأسطر
+    if [[ -f "$HOME/.zshrc" ]]; then
+        awk '/^plugins=\(/,/\)/' "$HOME/.zshrc" 2>/dev/null | tr -d '\n' | sed -E 's/plugins=\(|\)//g' | tr ' ' '\n' | grep -v '^$' | sort -u
+    fi
+}
+
 add_plugin_to_zshrc() {
     local plugin="$1"
     local zrc="$HOME/.zshrc"
     
-    if grep -qE "plugins=\(.*\b${plugin}\b.*\)" "$zrc" 2>/dev/null; then
+    # لو الإضافة موجودة بالفعل
+    if grep -qw "$plugin" "$zrc" 2>/dev/null; then
         warn "Plugin already enabled: $plugin | $(arb 'الإضافة مفعلة بالفعل')"
         return 0
     fi
     
+    # حقن الإضافة بأمان داخل القوس المفتوح plugins=(
     if grep -q "zsh-syntax-highlighting" "$zrc"; then
-        sed -i -E "s/zsh-syntax-highlighting/${plugin} zsh-syntax-highlighting/" "$zrc"
+        sed -i -E "s/\b(zsh-syntax-highlighting)\b/${plugin} \1/" "$zrc"
     else
-        sed -i -E "s/^plugins=\((.*)\)/plugins=(\1 ${plugin})/" "$zrc"
+        sed -i -E "s/^plugins=\(/plugins=( ${plugin} /" "$zrc"
     fi
     ok "Plugin enabled: $plugin | $(arb 'تم تفعيل الإضافة')"
 }
@@ -186,7 +195,7 @@ action_manage_plugins() {
     case "$choice" in
         " 1)"*)
             local active_list
-            active_list=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g')
+            active_list=$(get_active_plugins)
 
             local chk1="[ ]" chk2="[ ]" chk3="[ ]" chk4="[ ]" chk5="[ ]" chk6="[ ]"
             grep -qw "zsh-autosuggestions" <<< "$active_list" && chk1="[✓]"
@@ -235,30 +244,33 @@ action_manage_plugins() {
             done <<< "$selected"
             ;;
         " 3)"*)
-            # التعديل الجديد: ترتيب الإضافات في قائمة منسقة ومنع التكرار
+            # هنا تم إصلاح المشكلة الجذرية
             local active_list
-            active_list=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g' | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+            active_list=$(get_active_plugins)
             
             if [[ -z "$active_list" ]]; then
-                warn "No plugins registered | $(arb 'لا توجد إضافات مسجلة')"
+                warn "No active plugins found. | $(arb 'لا توجد إضافات مفعلة.')"
             else
                 local formatted=""
                 local count=1
                 while IFS= read -r plugin; do
+                    [[ -z "$plugin" ]] && continue
                     formatted+="  $count) $plugin\n"
                     ((count++))
                 done <<< "$active_list"
                 
-                # طباعة القائمة داخل إطار أنيق
                 printf "%b" "$formatted" | gum style --border rounded --padding "1 2" --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" "Active Plugins | $(arb 'الإضافات المفعلة')"
             fi
             ;;
         " 4)"*)
-            local active to_remove
-            active=$(grep -E "^plugins=\(" "$HOME/.zshrc" | sed 's/plugins=(//g; s/)//g' | tr ' ' '\n' | sort -u | grep -v '^$' || true)
-            [[ -z "$active" ]] && { warn "No plugins registered"; return; }
-            to_remove=$(echo "$active" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
+            local active_list to_remove
+            active_list=$(get_active_plugins)
+            [[ -z "$active_list" ]] && { warn "No plugins registered"; return; }
+            
+            to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
             [[ -z "$to_remove" ]] && return
+            
+            # إزالة الإضافة بأمان من ملف zshrc
             sed -i -E "s/ ?\b${to_remove}\b ?//g" "$HOME/.zshrc"
             ok "Plugin removed: $to_remove"
             ;;
