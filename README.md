@@ -4,7 +4,7 @@
 
 **A professional, unified control panel for the T-Header project in Termux.**
 
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Termux-orange.svg)]()
 
@@ -16,7 +16,9 @@
 ## ✨ Features
 - 🎨 **Interactive UI**: Built with `gum` for a smooth experience.
 - 🌍 **Arabic Support**: Uses `fribidi` to fix the reversed Arabic text in Termux.
+- 🔄 **Auto-Updater**: Automatically checks for new versions from GitHub and updates itself with one click.
 - 🐚 **Zsh & Oh-my-zsh Setup**: Fully automated setup with error handling.
+- 🧩 **Zsh Plugin Manager**: Easily install, enable, list, and remove external or built-in Zsh plugins right from the menu.
 - ⌨️ **Keyboard Layouts**: Pre-built `termux.properties` for standard, programmer, and numbers layouts.
 - 💾 **Backup System**: Automatically backs up your configs before making changes.
 - 🛠️ **Self-Healing**: Detects missing dependencies and installs them automatically.

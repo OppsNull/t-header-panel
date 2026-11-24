@@ -3,14 +3,15 @@
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
 #  Professional unified menu for the T-Header project
-#  Version : 3.1.0 (Zsh Plugin Manager Edition)
+#  Version : 3.2.0 (Auto-Updater Edition)
 #  License : MIT
 #  Platform: Termux (Android)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -o pipefail
-readonly VERSION="3.1.0"
+readonly VERSION="3.2.0"
 readonly APP_NAME="T-Header Control Panel"
+readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
 readonly LOGO_DIR="$CONFIG_DIR/logo"
 readonly TPT_DIR="$CONFIG_DIR/tpt"
@@ -25,6 +26,17 @@ readonly CLR_ERROR=196
 readonly CLR_DIM=240
 
 mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
+
+# ─── Update Checker ──────────────────────────────────────────────────
+REMOTE_VERSION=""
+HAS_UPDATE=false
+
+check_for_updates() {
+    REMOTE_VERSION=$(curl -fsSL --max-time 3 "$REPO_URL" 2>/dev/null | grep '^readonly VERSION=' | cut -d'"' -f2)
+    if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$VERSION" ]]; then
+        HAS_UPDATE=true
+    fi
+}
 
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
@@ -50,12 +62,19 @@ banner() {
     if has figlet && has lolcat; then
         figlet -f small "T-HEADER" 2>/dev/null | lolcat -f 2>/dev/null
     fi
+    
+    local update_msg=""
+    if [[ "$HAS_UPDATE" == "true" ]]; then
+        update_msg="$(arb "🚀 تحديث جديد متوفر: v$REMOTE_VERSION (اختر تحديث اللوحة)")"
+    fi
+
     gum style \
         --border double --padding "0 3" \
         --foreground "$CLR_PRIMARY" --border-foreground "$CLR_PRIMARY" \
         "⚡  ${APP_NAME}" \
         "$(arb 'لوحة تحكم موحدة لمشروع T-Header')" \
-        "v${VERSION}  •  Termux Customization Suite"
+        "v${VERSION}  •  Termux Customization Suite" \
+        "$update_msg"
     echo
 }
 
@@ -164,7 +183,7 @@ action_manage_plugins() {
             )
 
             for item in $selected; do
-                local plugin_name="${item%% *}" # استخراج الاسم فقط قبل المسافة
+                local plugin_name="${item%% *}"
                 install_omz_plugin "$plugin_name" "${ext_plugins[$plugin_name]}"
             done
             ;;
@@ -238,7 +257,7 @@ action_change_theme() {
     ok "$(arb "تم تغيير الثيم إلى: $theme")"
 }
 
-# ─── Maintenance ─────────────────────────────────────────────────────
+# ─── Maintenance & Updates ───────────────────────────────────────────
 action_backup() {
     local ts; ts=$(date +%s)
     [[ -f "$HOME/.zshrc" ]] && cp "$HOME/.zshrc" "$BACKUP_DIR/zshrc.$ts"
@@ -247,12 +266,32 @@ action_backup() {
     ok "$(arb "تم حفظ نسخة احتياطية في: $BACKUP_DIR")"
 }
 
+action_update_tool() {
+    check_for_updates
+    if [[ "$HAS_UPDATE" == "false" ]]; then
+        ok "$(arb 'أنت تستخدم أحدث إصدار بالفعل.')"
+        return
+    fi
+    confirm "$(arb "يتوفر إصدار جديد ($REMOTE_VERSION). هل تريد التحديث الآن؟")" || return
+    msg "$(arb 'جاري تحديث اللوحة...')"
+    local temp_file=$(mktemp)
+    if gum spin --spinner globe --title "$(arb 'جاري التحميل...')" -- curl -fsSL "$REPO_URL" -o "$temp_file"; then
+        chmod +x "$temp_file"
+        mv "$temp_file" "$PREFIX/bin/theader"
+        ok "$(arb 'تم التحديث بنجاح! سيتم إعادة تشغيل اللوحة الآن.')"
+        sleep 2
+        exec "$PREFIX/bin/theader"
+    else
+        err "$(arb 'فشل التحديث. تحقق من اتصالك بالإنترنت.')"
+        rm -f "$temp_file"
+    fi
+}
+
 action_install_all() {
-    confirm "$(arb 'سيتم تثبيت كل شيء (حزم + Zsh + كيبورد + ثيم). متأكد؟')" || return
+    confirm "$(arb 'سيتم تثبيت كل شيء (حزم + Zsh + كيبورد + ثيم + إضافات). متأكد؟')" || return
     action_install_packages
     action_setup_zsh
     
-    # تثبيت الإضافات الأساسية افتراضياً
     install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
     install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
 
@@ -276,6 +315,14 @@ main_loop() {
     while true; do
         banner
         local choice
+        local update_opt=""
+        
+        if [[ "$HAS_UPDATE" == "true" ]]; then
+            update_opt="$(arb "🔄  تحديث اللوحة إلى v$REMOTE_VERSION   Update Tool")"
+        else
+            update_opt="$(arb '🔄  التحقق من التحديثات           Check Updates')"
+        fi
+
         choice=$(gum choose --header "$(arb 'اختر من القائمة:')" --cursor "▶ " --height 20 \
             "$(arb '──  الإعداد  ──────────────────────────')" \
             "$(arb '📦  تثبيت الحزم               Install Packages')" \
@@ -287,6 +334,7 @@ main_loop() {
             "$(arb '⌨️   تغيير الكيبورد             Change Keyboard')" \
             "$(arb '🎭  تغيير ثيم ZSH              Change Theme')" \
             "$(arb '──  الصيانة  ────────────────────────')" \
+            "$update_opt" \
             "$(arb '💾  نسخة احتياطية               Backup')" \
             "$(arb '🚀  تثبيت الكل                  Install Everything')" \
             "$(arb '🗑️   إزالة T-Header             Remove')" \
@@ -303,6 +351,7 @@ main_loop() {
             *"تغيير العنوان"*|*"Change Title"*) action_change_title ;;
             *"تغيير الكيبورد"*|*"Change Keyboard"*) action_change_keyboard ;;
             *"تغيير ثيم"*|*"Change Theme"*) action_change_theme ;;
+            *"تحديث اللوحة"*|*"Check Updates"*|*"Update Tool"*) action_update_tool ;;
             *"نسخة احتياطية"*|*"Backup"*) action_backup ;;
             *"تثبيت الكل"*|*"Install Everything"*) action_install_all ;;
             *"إزالة T-Header"*|*"Remove"*) action_remove ;;
@@ -324,11 +373,13 @@ Usage: $(basename "$0") [OPTION]
 Options:
   -h, --help      Show this help
   -v, --version   Show version
+  -u, --update    Force update to latest version
   -l, --log       Open log file
   (no args)       Launch interactive menu
 EOF
         exit 0 ;;
     -v|--version) echo "${APP_NAME} v${VERSION}"; exit 0 ;;
+    -u|--update)  check_for_updates; action_update_tool; exit 0 ;;
     -l|--log)     [[ -f "$LOG_FILE" ]] && less "$LOG_FILE" || echo "No log yet"; exit 0 ;;
 esac
 
@@ -338,4 +389,8 @@ has fribidi || pkg install -y fribidi >/dev/null 2>&1 || true
 
 generate_keyboards
 log INFO "Session started (v${VERSION})"
+
+msg "$(arb 'جاري فحص التحديثات...')"
+check_for_updates
+
 main_loop
