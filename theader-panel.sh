@@ -2,28 +2,15 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  T-HEADER CONTROL PANEL
 # ═══════════════════════════════════════════════════════════════════════
-#  Version : 4.3.1 (Absolute Bulletproof Edition - Hotfix)
+#  Version : 4.4.0 (Bilingual Bulletproof Edition)
+#  Based on: remo7777/T-Header — rewritten as a unified control panel
 #  License : MIT
-# ═══════════════════════════════════════════════════════════════════════
-#  Changelog 4.3.1:
-#   - FIX: get_active_plugins now parses multi-line plugins=() blocks
-#          (removing a plugin no longer wipes the whole list)
-#   - FIX: "List Active" now displays the list (gum style ignores stdin
-#          when positional args are given)
-#   - FIX: plugin order is preserved (no more sort -u reordering —
-#          zsh-syntax-highlighting must load last)
-#   - FIX: semver-aware update comparison (no false update prompts)
-#   - ADD: automatic .zshrc backup before plugin/theme modifications
-#   - ADD: log file rotation (512 KB)
-#   - FIX: sed-safe theme names (& / \ escaping)
-#   - FIX: 'theader -l' checks for less, falls back to cat
-#   - UX:  trap cleanup on EXIT only (EXIT fires on Ctrl+C too)
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 shopt -s inherit_errexit
 
-readonly VERSION="4.3.1"
+readonly VERSION="4.4.0"
 readonly APP_NAME="T-Header Control Panel"
 readonly REPO_URL="https://raw.githubusercontent.com/OppsNull/t-header-panel/main/theader-panel.sh"
 readonly CONFIG_DIR="$HOME/.config/theader"
@@ -31,7 +18,6 @@ readonly LOGO_DIR="$CONFIG_DIR/logo"
 readonly TPT_DIR="$CONFIG_DIR/tpt"
 readonly BACKUP_DIR="$HOME/.theader-backups"
 readonly LOG_FILE="$CONFIG_DIR/control-panel.log"
-readonly LOG_MAX_BYTES=524288
 
 readonly CLR_PRIMARY=212
 readonly CLR_ACCENT=141
@@ -41,125 +27,186 @@ readonly CLR_ERROR=196
 readonly CLR_DIM=240
 
 cleanup() { rm -f "${TEMP_FILE:-}" 2>/dev/null || true; }
-trap cleanup EXIT
+trap cleanup EXIT SIGINT SIGTERM
 
 mkdir -p "$CONFIG_DIR" "$LOGO_DIR" "$TPT_DIR" "$BACKUP_DIR" 2>/dev/null
+
+# ─── Language (AR/EN) ────────────────────────────────────────────────
+LANG_MODE="ar"
+[[ -s "$CONFIG_DIR/lang.cfg" ]] && LANG_MODE="$(cat "$CONFIG_DIR/lang.cfg" 2>/dev/null || echo ar)"
+[[ "$LANG_MODE" == "en" ]] || LANG_MODE="ar"
+
+declare -A TR_AR=(
+  [banner_sub]="لوحة تحكم موحدة لمشروع T-Header"
+  [m_setup]="الإعداد"
+  [m_custom]="التخصيص"
+  [m_maint]="الصيانة"
+  [m_pkgs]="تثبيت الحزم"
+  [m_zsh]="إعداد Zsh"
+  [m_plugins]="إدارة الإضافات"
+  [m_logo]="تغيير الشعار"
+  [m_title]="تغيير العنوان"
+  [m_kb]="تغيير الكيبورد"
+  [m_theme]="تغيير الثيم"
+  [m_upd]="تحديث اللوحة"
+  [m_chk]="فحص التحديثات"
+  [m_backup]="نسخة احتياطية"
+  [m_all]="تثبيت الكل"
+  [m_hdr_on]="إخفاء هيدر الترمينال"
+  [m_hdr_off]="تشغيل هيدر الترمينال"
+  [m_lang]="Switch to English"
+  [m_remove]="إزالة T-Header"
+  [m_exit]="خروج"
+  [p_ext]="تثبيت إضافات خارجية"
+  [p_bi]="تفعيل إضافات داخلية"
+  [p_list]="عرض الإضافات المفعلة"
+  [p_rm]="إزالة إضافة"
+  [p_back]="رجوع"
+  [q_back]="العودة للقائمة الرئيسية؟ (Y/n)"
+  [q_all]="تثبيت كل شيء (حزم + Zsh + ثيم + إضافات)؟"
+  [q_rm]="إزالة T-Header بالكامل؟"
+  [q_upd]="هل تريد تطبيق التحديث؟"
+  [q_del_folder]="حذف مجلد الإضافة أيضاً؟"
+  [u_avail]="يوجد تحديث جديد"
+  [u_err]="فشل فحص التحديثات."
+  [bye]="وداعاً 👋"
+)
+declare -A TR_EN=(
+  [banner_sub]="Unified control panel for T-Header"
+  [m_setup]="Setup"
+  [m_custom]="Customize"
+  [m_maint]="Maintenance"
+  [m_pkgs]="Install Packages"
+  [m_zsh]="Setup Zsh"
+  [m_plugins]="Manage Plugins"
+  [m_logo]="Change Logo"
+  [m_title]="Change Title"
+  [m_kb]="Change Keyboard"
+  [m_theme]="Change Theme"
+  [m_upd]="Update Tool"
+  [m_chk]="Check Updates"
+  [m_backup]="Backup"
+  [m_all]="Install Everything"
+  [m_hdr_on]="Disable Terminal Header"
+  [m_hdr_off]="Enable Terminal Header"
+  [m_lang]="التبديل للعربية"
+  [m_remove]="Remove T-Header"
+  [m_exit]="Exit"
+  [p_ext]="Install External Plugins"
+  [p_bi]="Enable Built-in Plugins"
+  [p_list]="List Active Plugins"
+  [p_rm]="Remove Plugin"
+  [p_back]="Back"
+  [q_back]="Return to main menu? (Y/n)"
+  [q_all]="Install EVERYTHING (packages + Zsh + theme + plugins)?"
+  [q_rm]="Remove T-Header completely?"
+  [q_upd]="Apply the update?"
+  [q_del_folder]="Delete the plugin folder too?"
+  [u_avail]="New update available"
+  [u_err]="Failed to check for updates."
+  [bye]="Goodbye 👋"
+)
+
+t() {
+    local k="$1"
+    if [[ "$LANG_MODE" == "ar" ]]; then
+        printf '%s' "${TR_AR[$k]:-$k}" | fribidi --nopad 2>/dev/null || printf '%s' "${TR_AR[$k]:-$k}"
+    else
+        printf '%s' "${TR_EN[$k]:-$k}"
+    fi
+}
+
+toggle_language() {
+    if [[ "$LANG_MODE" == "ar" ]]; then LANG_MODE="en"; else LANG_MODE="ar"; fi
+    printf '%s\n' "$LANG_MODE" > "$CONFIG_DIR/lang.cfg"
+    ok "Language switched ($( [[ "$LANG_MODE" == ar ]] && echo العربية || echo English ))"
+}
 
 # ─── Utilities ───────────────────────────────────────────────────────
 has() { command -v "$1" &>/dev/null; }
 
-arb() {
-    if has fribidi; then
-        printf '%s' "$1" | fribidi --nopad 2>/dev/null || printf '%s' "$1"
-    else
-        printf '%s' "$1"
-    fi
-}
-
 confirm_action() {
     local msg="$1"
     local ans
-    read -r -p "$(echo -e "\e[1;33m$msg (y/N): \e[0m")" ans
-    [[ "$ans" =~ ^[Yy]$ ]]
+    read -r -p "$(echo -e "\e[1;33m$msg \e[0m")" ans || return 1
+    [[ "$ans" =~ ^[Yy]$ ]] || [[ -z "$ans" && "$msg" == *"(Y/n)"* ]]
 }
 
-log() {
-    # Rotation: keep the last log plus one .old copy
-    if [[ -f "$LOG_FILE" ]]; then
-        local size
-        size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
-        if [[ "$size" -gt "$LOG_MAX_BYTES" ]]; then
-            mv "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null || true
-        fi
-    fi
-    printf '[%s] [%-5s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG_FILE" 2>/dev/null
-}
+log() { printf '[%s] [%-5s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> "$LOG_FILE" 2>/dev/null; }
 msg()  { log INFO  "$*"; gum style --foreground "$CLR_ACCENT"  "  ℹ  $*"; }
 ok()   { log OK    "$*"; gum style --foreground "$CLR_SUCCESS" "  ✓  $*"; }
 warn() { log WARN  "$*"; gum style --foreground "$CLR_WARN"    "  ⚠  $*"; }
 err()  { log ERR   "$*"; gum style --foreground "$CLR_ERROR"   "  ✗  $*"; }
-
-# Backup a single file before modifying it (used by plugin/theme edits)
-backup_file() {
-    local src="$1"
-    [[ -f "$src" ]] || return 0
-    local name
-    name=$(basename "$src")
-    name="${name#.}"   # نشيل النقطة عشان الملف مايبقاش hidden
-    cp "$src" "$BACKUP_DIR/${name}.$(date +%s)" 2>/dev/null || true
-}
 
 # ─── Update Checker ──────────────────────────────────────────────────
 REMOTE_VERSION=""
 HAS_UPDATE=false
 UPDATE_ERROR=false
 
-# Semantic version compare: returns 0 if $1 > $2  (e.g. 4.10.0 > 4.3.1)
-version_gt() {
-    local IFS=.
-    local -a a=($1) b=($2)
-    local i x y
-    for ((i=0; i<3; i++)); do
-        x=$((10#${a[i]:-0}))
-        y=$((10#${b[i]:-0}))
-        (( x > y )) && return 0
-        (( x < y )) && return 1
-    done
-    return 1
-}
-
 check_for_updates() {
     UPDATE_ERROR=false
     local raw_content
     if ! raw_content=$(curl -fsSL --max-time 5 "$REPO_URL" 2>/dev/null); then
         UPDATE_ERROR=true
-        return
+        return 0
     fi
     REMOTE_VERSION=$(printf '%s\n' "$raw_content" | grep -E '^readonly VERSION=' | head -n 1 | cut -d'"' -f2 || true)
-    if [[ -n "$REMOTE_VERSION" ]] && version_gt "$REMOTE_VERSION" "$VERSION"; then
+    if [[ -n "$REMOTE_VERSION" && "$REMOTE_VERSION" != "$VERSION" ]]; then
         HAS_UPDATE=true
     fi
 }
 
 # ─── Branding ────────────────────────────────────────────────────────
 banner() {
-    printf "\033c" 
+    printf "\033c"
     if has figlet && has lolcat; then
         figlet -f small "T-HEADER" 2>/dev/null | lolcat -f 2>/dev/null || true
     fi
     local update_msg=""
     if [[ "$HAS_UPDATE" == "true" ]]; then
-        update_msg="🚀 New update available: v$REMOTE_VERSION"
+        update_msg="🚀 $(t u_avail): v$REMOTE_VERSION"
     elif [[ "$UPDATE_ERROR" == "true" ]]; then
-        update_msg="⚠️ Failed to check for updates."
+        update_msg="⚠️ $(t u_err)"
     fi
 
     gum style \
         --border double --padding "0 3" \
         --foreground "$CLR_PRIMARY" --border-foreground "$CLR_PRIMARY" \
         "⚡  ${APP_NAME}" \
-        "T-Header | $(arb 'لوحة تحكم موحدة لمشروع')" \
-        "v${VERSION}  •  Termux Customization Suite" \
+        "$(t banner_sub)" \
+        "v${VERSION}  •  Termux Customization Suite  •  $( [[ "$LANG_MODE" == ar ]] && echo AR || echo EN )" \
         "$update_msg"
     echo
 }
 
 # ─── Core Actions ────────────────────────────────────────────────────
 generate_keyboards() {
-    [[ -f "$TPT_DIR/kb-default.properties" ]] || echo -e "extra-keys = []" > "$TPT_DIR/kb-default.properties"
+    [[ -f "$TPT_DIR/kb-default.properties" ]] || echo "extra-keys = []" > "$TPT_DIR/kb-default.properties"
     [[ -f "$TPT_DIR/kb-standard.properties" ]] || cat > "$TPT_DIR/kb-standard.properties" <<'EOF'
 extra-keys = [ \
  ['ESC','/','-','HOME','UP','END','PGUP'], \
  ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'] \
 ]
 EOF
+    [[ -f "$TPT_DIR/kb-programmer.properties" ]] || cat > "$TPT_DIR/kb-programmer.properties" <<'EOF'
+extra-keys = [ \
+ ['ESC','|','/','HOME','UP','END','PGUP','~'], \
+ ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN','|'] \
+]
+EOF
+    [[ -f "$TPT_DIR/kb-numbers.properties" ]] || cat > "$TPT_DIR/kb-numbers.properties" <<'EOF'
+extra-keys = [ \
+ ['1','2','3','4','5','6','7','8','9','0'], \
+ ['ESC','TAB','+','-','/','*','(',')','<','>'] \
+]
+EOF
 }
 
 action_install_packages() {
     msg "Installing basic packages..."
-    gum spin --spinner dot --title "Updating packages..." -- bash -c 'pkg update -y && pkg upgrade -y' >/dev/null 2>&1 || true
+    gum spin --spinner dot --title "Updating packages..." -- bash -c 'yes | pkg update -y' >/dev/null 2>&1 || true
     gum spin --spinner dot --title "Installing tools..." -- pkg install -y git zsh curl wget figlet lolcat boxes fzf gum bat eza ncurses-utils fribidi >/dev/null 2>&1 || true
-    ok "Packages installed | $(arb 'تم تثبيت الحزم')"
+    ok "Packages installed | تم تثبيت الحزم"
 }
 
 action_setup_zsh() {
@@ -173,7 +220,7 @@ action_setup_zsh() {
         if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
             warn "GitHub failed, trying alternative..."
             gum spin --spinner globe --title "Downloading alternative..." -- \
-                git clone --depth=1 https://gitee.com/mcornella/ohmyzsh.git "$HOME/.oh-my-zsh" >/dev/null 2>&1 || true
+                git clone --depth=1 https://gitee.com/mirrors/ohmyzsh.git "$HOME/.oh-my-zsh" >/dev/null 2>&1 || true
         fi
     fi
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
@@ -181,96 +228,165 @@ action_setup_zsh() {
         return 1
     fi
     [[ -f "$HOME/.zshrc" ]] || cp "$HOME/.oh-my-zsh/templates/zshrc.zsh-template" "$HOME/.zshrc"
-    ok "Zsh setup completed | $(arb 'تم إعداد Zsh')"
+    create_shortcuts
+    write_aliases_block
+    ok "Zsh setup completed | تم إعداد Zsh"
 }
 
-# ─── Zsh Plugin Manager (Bulletproof Edition) ────────────────────────
-# استخراج الإضافات بدقة من السطر النظيف — يدعم البلوك متعدد الأسطر كمان
+# ─── Shortcuts (clogo / ctitle / ctpro / cztheme) ────────────────────
+create_shortcuts() {
+    local pair n a
+    for pair in "clogo:logo" "ctitle:title" "ctpro:keyboard" "cztheme:theme"; do
+        n="${pair%%:*}"; a="${pair##*:}"
+        printf '#!/data/data/com.termux/files/usr/bin/bash\nexec "$PREFIX/bin/theader" %s\n' "$a" > "$PREFIX/bin/$n"
+        chmod +x "$PREFIX/bin/$n"
+    done
+}
+
+# ─── Aliases + Terminal Header blocks in .zshrc ──────────────────────
+write_aliases_block() {
+    cat > "$CONFIG_DIR/aliases" <<'EOF'
+# Modern replacements (only if the tool exists)
+command -v eza >/dev/null 2>&1 && alias ls='eza --icons' ll='eza -la --icons' la='eza -a --icons'
+command -v bat >/dev/null 2>&1 && alias cat='bat --paging=never'
+alias cls='clear'
+alias ports='ss -tulanp 2>/dev/null || netstat -tulanp'
+EOF
+    local zrc="$HOME/.zshrc"
+    [[ -f "$zrc" ]] || return 0
+    grep -q "theader aliases >>>" "$zrc" || cat >> "$zrc" <<'EOF'
+
+# >>> theader aliases >>>
+[ -f "$HOME/.config/theader/aliases" ] && source "$HOME/.config/theader/aliases"
+# <<< theader aliases <<<
+EOF
+}
+
+generate_header_sh() {
+    cat > "$CONFIG_DIR/header.sh" <<'EOF'
+# T-Header terminal greeting
+TH_CFG="$HOME/.config/theader"
+if command -v figlet >/dev/null 2>&1; then
+    TH_TITLE="T-Header"
+    [[ -s "$TH_CFG/title.cfg" ]] && TH_TITLE="$(cat "$TH_CFG/title.cfg")"
+    if command -v lolcat >/dev/null 2>&1; then
+        figlet -f small "$TH_TITLE" 2>/dev/null | lolcat -f 2>/dev/null
+    else
+        figlet -f small "$TH_TITLE" 2>/dev/null
+    fi
+fi
+[[ -s "$TH_CFG/active.logo" ]] && cat "$TH_CFG/active.logo" 2>/dev/null
+EOF
+}
+
+action_toggle_header() {
+    local zrc="$HOME/.zshrc"
+    [[ -f "$zrc" ]] || { err ".zshrc not found. Setup Zsh first."; return 1; }
+    generate_header_sh
+    if grep -q "theader header >>>" "$zrc"; then
+        sed -i '/theader header >>>/,/theader header <<</d' "$zrc"
+        ok "Terminal header disabled | تم إخفاء الهيدر"
+    else
+        cat >> "$zrc" <<'EOF'
+
+# >>> theader header >>>
+[ -f "$HOME/.config/theader/header.sh" ] && source "$HOME/.config/theader/header.sh"
+# <<< theader header <<<
+EOF
+        ok "Terminal header enabled — open a new session | تم تشغيل الهيدر"
+    fi
+}
+
+# ─── Zsh Plugin Manager (fixed) ──────────────────────────────────────
 get_active_plugins() {
     [[ -f "$HOME/.zshrc" ]] || return 0
     awk '
         /^[[:space:]]*#/ { next }
-        /^[[:space:]]*plugins=\(/ {
-            line = $0
-            sub(/^[[:space:]]*plugins=\(/, "", line)
-            while (line !~ /\)/) {
-                if ((getline nl) <= 0) break
-                line = line " " nl
-            }
-            sub(/\).*/, "", line)
-            gsub(/[ \t]+/, "\n", line)
-            printf "%s", line
-            exit
+        inblk {
+            if (/^[[:space:]]*\)/) { exit }
+            print
+            next
         }
-    ' "$HOME/.zshrc" | grep -v '^$' | awk '!seen[$0]++'
+        /^[[:space:]]*plugins=\(/ {
+            sub(/^[[:space:]]*plugins=\(/, "")
+            if (sub(/\)[[:space:]]*(#.*)?$/, "")) {
+                gsub(/[[:space:]]+/, "\n"); print; exit
+            }
+            print
+            inblk=1
+            next
+        }
+    ' "$HOME/.zshrc" | tr -s '[:space:]' '\n' | sed '/^$/d' | sort -u
 }
 
-# إعادة بناء بلوك الإضافات بالكامل ليكون في سطر واحد نظيف
 update_zshrc_plugins() {
     local action="$1"
     local target_plugin="$2"
     local zrc="$HOME/.zshrc"
     local temp_zrc="${zrc}.tmp"
 
-    [[ -f "$zrc" ]] || { err ".zshrc not found."; return 1; }
+    cp "$zrc" "$BACKUP_DIR/zshrc.$(date +%s)"
 
-    local plugins=()
+    local plugins=() p
     while IFS= read -r p; do
         [[ -n "$p" ]] && plugins+=("$p")
     done < <(get_active_plugins)
 
     if [[ "$action" == "add" ]]; then
-        for p in "${plugins[@]}"; do
+        for p in ${plugins[@]+"${plugins[@]}"}; do
             if [[ "$p" == "$target_plugin" ]]; then
-                warn "Plugin already enabled: $target_plugin | $(arb 'الإضافة مفعلة بالفعل')"
+                warn "Plugin already enabled: $target_plugin | الإضافة مفعلة بالفعل"
                 return 0
             fi
         done
         plugins+=("$target_plugin")
     elif [[ "$action" == "remove" ]]; then
-        local found=false
         local new_plugins=()
-        for p in "${plugins[@]}"; do
-            if [[ "$p" != "$target_plugin" ]]; then
-                new_plugins+=("$p")
-            else
-                found=true
-            fi
+        for p in ${plugins[@]+"${plugins[@]}"}; do
+            [[ "$p" != "$target_plugin" ]] && new_plugins+=("$p")
         done
-        if [[ "$found" == "false" ]]; then
-            warn "Plugin not found: $target_plugin"
-            return 0
-        fi
-        plugins=("${new_plugins[@]+"${new_plugins[@]}"}")
+        plugins=(${new_plugins[@]+"${new_plugins[@]}"})
     fi
 
+    # zsh-syntax-highlighting must always be LAST (official recommendation)
+    local ordered=()
+    for p in ${plugins[@]+"${plugins[@]}"}; do
+        [[ "$p" == "zsh-syntax-highlighting" ]] && continue
+        ordered+=("$p")
+    done
+    for p in ${plugins[@]+"${plugins[@]}"}; do
+        [[ "$p" == "zsh-syntax-highlighting" ]] && ordered+=("$p")
+    done
+    plugins=(${ordered[@]+"${ordered[@]}"})
+
     local plugin_str=""
-    for p in "${plugins[@]+"${plugins[@]}"}"; do
+    for p in ${plugins[@]+"${plugins[@]}"}; do
         plugin_str+="$p "
     done
 
-    # باكاب قبل أي تعديل على .zshrc
-    backup_file "$zrc"
-
-    # استخدام awk لمسح البلوك القديم (حتى لو متعدد الأسطر) ووضع سطر واحد نظيف
+    # Rebuild the plugins block cleanly:
+    #  - replaces every (commented or not) plugins block, single-line or multi-line
+    #  - never consumes lines after the block (the old bug)
+    #  - if no block exists, inserts the line right BEFORE sourcing oh-my-zsh.sh
     awk -v p_str="plugins=( $plugin_str)" '
         /^[[:space:]]*#/ { print; next }
-        /^[[:space:]]*plugins=\(/ {
-            if (!done) {
-                print p_str
-                done=1
-            }
-            in_block=1
-            next
-        }
         in_block {
             if (/^[[:space:]]*\)/) { in_block=0 }
+            next
+        }
+        /^[[:space:]]*plugins=\(/ {
+            if (!done) { print p_str; done=1 }
+            if ($0 !~ /^[[:space:]]*plugins=\([^)]*\)[[:space:]]*(#.*)?$/) { in_block=1 }
+            next
+        }
+        /^[[:space:]]*source.*oh-my-zsh/ {
+            if (!done) { print p_str; print ""; done=1 }
+            print
             next
         }
         { print }
     ' "$zrc" > "$temp_zrc"
 
-    # لو مفيش بلوك plugins أصلاً، نضيفه في الآخر
     if ! grep -q "^[[:space:]]*plugins=(" "$temp_zrc"; then
         echo "plugins=( $plugin_str)" >> "$temp_zrc"
     fi
@@ -278,9 +394,9 @@ update_zshrc_plugins() {
     mv "$temp_zrc" "$zrc"
 
     if [[ "$action" == "add" ]]; then
-        ok "Plugin enabled: $target_plugin | $(arb 'تم تفعيل الإضافة')"
+        ok "Plugin enabled: $target_plugin | تم تفعيل الإضافة"
     else
-        ok "Plugin removed: $target_plugin | $(arb 'تم إزالة الإضافة')"
+        ok "Plugin removed: $target_plugin | تم إزالة الإضافة"
     fi
 }
 
@@ -302,17 +418,17 @@ install_omz_plugin() {
 action_manage_plugins() {
     if [[ ! -f "$HOME/.zshrc" ]]; then
         err ".zshrc not found. Setup Zsh first."
-        return
+        return 0
     fi
 
     local choice
     choice=$(printf "%s\n" \
-        " 1) Install External | $(arb 'تثبيت إضافات خارجية')" \
-        " 2) Enable Built-in  | $(arb 'تفعيل إضافات داخلية')" \
-        " 3) List Active      | $(arb 'عرض الإضافات المفعلة')" \
-        " 4) Remove Plugin    | $(arb 'إزالة إضافة')" \
-        " 5) Back             | $(arb 'رجوع')" | \
-        fzf --reverse --height 100% --border --info=inline --prompt "Plugin Manager > " --pointer "▶ ") || return
+        " 1) Install External | $(t p_ext)" \
+        " 2) Enable Built-in  | $(t p_bi)" \
+        " 3) List Active      | $(t p_list)" \
+        " 4) Remove Plugin    | $(t p_rm)" \
+        " 5) Back             | $(t p_back)" | \
+        fzf --reverse --height 100% --border --info=inline --prompt "Plugin Manager > " --pointer "▶ ") || return 0
 
     case "$choice" in
         *"Install External"*)
@@ -329,78 +445,84 @@ action_manage_plugins() {
 
             local selected
             selected=$(printf "%s\n" \
-                " 1) $chk1 zsh-autosuggestions | $(arb 'اقتراحات تلقائية')" \
-                " 2) $chk2 zsh-syntax-highlighting | $(arb 'تلوين الأوامر')" \
-                " 3) $chk3 zsh-completions | $(arb 'إكمال إضافي')" \
-                " 4) $chk4 fzf-tab | $(arb 'بحث تفاعلي بالملفات')" \
-                " 5) $chk5 zsh-history-substring-search | $(arb 'بحث في الأوامر')" \
-                " 6) $chk6 zsh-you-should-use | $(arb 'تذكير بالاختصارات')" | \
-                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return
+                " 1) $chk1 zsh-autosuggestions | اقتراحات تلقائية" \
+                " 2) $chk2 zsh-syntax-highlighting | تلوين الأوامر" \
+                " 3) $chk3 zsh-completions | إكمال إضافي" \
+                " 4) $chk4 fzf-tab | بحث تفاعلي بالملفات" \
+                " 5) $chk5 zsh-history-substring-search | بحث في الأوامر" \
+                " 6) $chk6 zsh-you-should-use | تذكير بالاختصارات" | \
+                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select plugins (Tab to multi-select) > " --pointer "▶ ") || return 0
 
+            local line plugin
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                local plugin=""
-                [[ "$line" == *"zsh-autosuggestions"* ]] && plugin="zsh-autosuggestions"
-                [[ "$line" == *"zsh-syntax-highlighting"* ]] && plugin="zsh-syntax-highlighting"
-                [[ "$line" == *"zsh-completions"* ]] && plugin="zsh-completions"
-                [[ "$line" == *"fzf-tab"* ]] && plugin="fzf-tab"
-                [[ "$line" == *"zsh-history-substring-search"* ]] && plugin="zsh-history-substring-search"
-                [[ "$line" == *"zsh-you-should-use"* ]] && plugin="zsh-you-should-use"
-
+                plugin=""
+                case "$line" in
+                    *zsh-autosuggestions*)          plugin="zsh-autosuggestions" ;;
+                    *zsh-syntax-highlighting*)      plugin="zsh-syntax-highlighting" ;;
+                    *zsh-completions*)              plugin="zsh-completions" ;;
+                    *fzf-tab*)                      plugin="fzf-tab" ;;
+                    *zsh-history-substring-search*) plugin="zsh-history-substring-search" ;;
+                    *zsh-you-should-use*)           plugin="zsh-you-should-use" ;;
+                esac
                 if [[ -n "$plugin" ]]; then
                     case "$plugin" in
-                        "zsh-autosuggestions") install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" ;;
-                        "zsh-syntax-highlighting") install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" ;;
-                        "zsh-completions") install_omz_plugin "zsh-completions" "https://github.com/zsh-users/zsh-completions" ;;
-                        "fzf-tab") install_omz_plugin "fzf-tab" "https://github.com/Aloxaf/fzf-tab" ;;
-                        "zsh-history-substring-search") install_omz_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search" ;;
-                        "zsh-you-should-use") install_omz_plugin "zsh-you-should-use" "https://github.com/MichaelAquilina/zsh-you-should-use" ;;
+                        "zsh-autosuggestions")          install_omz_plugin "$plugin" "https://github.com/zsh-users/zsh-autosuggestions" || true ;;
+                        "zsh-syntax-highlighting")      install_omz_plugin "$plugin" "https://github.com/zsh-users/zsh-syntax-highlighting" || true ;;
+                        "zsh-completions")              install_omz_plugin "$plugin" "https://github.com/zsh-users/zsh-completions" || true ;;
+                        "fzf-tab")                      install_omz_plugin "$plugin" "https://github.com/Aloxaf/fzf-tab" || true ;;
+                        "zsh-history-substring-search") install_omz_plugin "$plugin" "https://github.com/zsh-users/zsh-history-substring-search" || true ;;
+                        "zsh-you-should-use")           install_omz_plugin "$plugin" "https://github.com/MichaelAquilina/zsh-you-should-use" || true ;;
                     esac
                 fi
             done <<< "$selected"
             ;;
         *"Enable Built-in"*)
-            local selected
+            local selected line plugin
             selected=$(printf "%s\n" \
                 " 1) git" " 2) extract" " 3) colored-man-pages" " 4) command-not-found" \
                 " 5) sudo" " 6) web-search" " 7) cp" " 8) z" | \
-                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select built-in plugins > " --pointer "▶ ") || return
+                fzf --multi --reverse --height 100% --border --info=inline --prompt "Select built-in plugins > " --pointer "▶ ") || return 0
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                local plugin
                 plugin=$(echo "$line" | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*//')
-                update_zshrc_plugins "add" "$plugin"
+                update_zshrc_plugins "add" "$plugin" || true
             done <<< "$selected"
             ;;
         *"List Active"*)
-            local active_list
+            local active_list plugin output="" count=1
             active_list=$(get_active_plugins)
 
             if [[ -z "$active_list" ]]; then
-                warn "No active plugins found. | $(arb 'لا توجد إضافات مفعلة.')"
+                warn "No active plugins found. | لا توجد إضافات مفعلة."
             else
-                local lines=""
-                local count=1
                 while IFS= read -r plugin; do
                     [[ -z "$plugin" ]] && continue
-                    lines+="  $count) $plugin"$'\n'
+                    output+="  $count) $plugin"$'\n'
                     count=$((count + 1))
                 done <<< "$active_list"
-
                 gum style --border rounded --padding "1 2" \
                     --foreground "$CLR_SUCCESS" --border-foreground "$CLR_SUCCESS" \
-                    "Active Plugins | $(arb 'الإضافات المفعلة')" "" "$lines"
+                    "Active Plugins | الإضافات المفعلة" <<< "$output"
             fi
             ;;
         *"Remove Plugin"*)
-            local active_list to_remove
+            local active_list to_remove zc
             active_list=$(get_active_plugins)
-            [[ -z "$active_list" ]] && { warn "No plugins registered"; return; }
+            [[ -z "$active_list" ]] && { warn "No plugins registered"; return 0; }
 
-            to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return
-            [[ -z "$to_remove" ]] && return
+            to_remove=$(echo "$active_list" | fzf --reverse --height 100% --border --info=inline --prompt "Select plugin to remove > " --pointer "▶ ") || return 0
+            [[ -z "$to_remove" ]] && return 0
 
-            update_zshrc_plugins "remove" "$to_remove"
+            update_zshrc_plugins "remove" "$to_remove" || true
+
+            # Optional: delete the plugin folder as well (validated name, no path injection)
+            if [[ "$to_remove" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                zc="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+                if [[ -d "$zc/plugins/$to_remove" ]] && confirm_action "$(t q_del_folder) [$to_remove] (y/N): "; then
+                    rm -rf "$zc/plugins/$to_remove"
+                fi
+            fi
             ;;
     esac
 }
@@ -408,10 +530,11 @@ action_manage_plugins() {
 # ─── Customizations & Maintenance ────────────────────────────────────
 action_change_logo() {
     if [[ ! -d "$LOGO_DIR" || -z "$(ls -A "$LOGO_DIR" 2>/dev/null)" ]]; then
-        err "No logos in: $LOGO_DIR"; return
+        err "No logos in: $LOGO_DIR"
+        return 1
     fi
     local logo indent
-    logo=$(ls "$LOGO_DIR" | fzf --reverse --height 100% --border --info=inline --prompt "Select Logo > " --pointer "▶ ") || return
+    logo=$(ls "$LOGO_DIR" | fzf --reverse --height 100% --border --info=inline --prompt "Select Logo > " --pointer "▶ ") || return 0
     indent=$(printf "%s\n" 2 3 4 5 6 | fzf --reverse --height 100% --border --info=inline --prompt "Indent > " --pointer "▶ ") || indent=2
     cp "$LOGO_DIR/$logo" "$CONFIG_DIR/active.logo"
     printf '%s\n' "$indent" > "$CONFIG_DIR/indent.cfg"
@@ -420,8 +543,8 @@ action_change_logo() {
 
 action_change_title() {
     local title
-    title=$(gum input --header "Enter new title:" --placeholder "T-Header" --prompt "› ") || return
-    [[ -z "$title" ]] && return
+    title=$(gum input --header "Enter new title:" --placeholder "T-Header" --prompt "› ") || return 0
+    [[ -z "$title" ]] && return 0
     printf '%s\n' "$title" > "$CONFIG_DIR/title.cfg"
     ok "Title saved: $title"
 }
@@ -429,8 +552,8 @@ action_change_title() {
 action_change_keyboard() {
     generate_keyboards
     local file
-    file=$(ls "$TPT_DIR" 2>/dev/null | fzf --reverse --height 100% --border --info=inline --prompt "Select Layout > " --pointer "▶ ") || return
-    [[ -z "$file" ]] && return
+    file=$(ls "$TPT_DIR" 2>/dev/null | fzf --reverse --height 100% --border --info=inline --prompt "Select Layout > " --pointer "▶ ") || return 0
+    [[ -z "$file" ]] && return 0
     [[ -f "$HOME/.termux/termux.properties" ]] && cp "$HOME/.termux/termux.properties" "$BACKUP_DIR/termux.$(date +%s)"
     mkdir -p "$HOME/.termux"
     cp "$TPT_DIR/$file" "$HOME/.termux/termux.properties"
@@ -439,19 +562,15 @@ action_change_keyboard() {
 }
 
 action_change_theme() {
-    local t="$HOME/.oh-my-zsh/themes" c="$HOME/.oh-my-zsh/custom/themes"
-    [[ ! -d "$t" && ! -d "$c" ]] && { err "Oh-my-zsh not installed."; return; }
+    local t_dir="$HOME/.oh-my-zsh/themes" c_dir="$HOME/.oh-my-zsh/custom/themes"
+    [[ ! -d "$t_dir" && ! -d "$c_dir" ]] && { err "Oh-my-zsh not installed."; return 1; }
     local themes theme
-    themes=$( (ls "$t" 2>/dev/null; ls "$c" 2>/dev/null) | sed 's/\.zsh-theme$//' | sort -u)
-    theme=$(printf '%s\n' "$themes" | fzf --reverse --height 100% --border --info=inline --prompt "Search Theme > " --pointer "▶ ") || return
-    [[ -z "$theme" ]] && return
-
-    # باكاب + تهريب محارف sed الخاصة (& / / / \)
-    backup_file "$HOME/.zshrc"
-    local esc_theme="${theme//\\/\\\\}"
-    esc_theme="${esc_theme//&/\\&}"
-    esc_theme="${esc_theme//\//\\/}"
-    sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$esc_theme\"/" "$HOME/.zshrc"
+    themes=$( (ls "$t_dir" 2>/dev/null; ls "$c_dir" 2>/dev/null) | grep '\.zsh-theme$' | sed 's/\.zsh-theme$//' | sort -u)
+    [[ -z "$themes" ]] && { err "No themes found."; return 1; }
+    theme=$(printf '%s\n' "$themes" | fzf --reverse --height 100% --border --info=inline --prompt "Search Theme > " --pointer "▶ ") || return 0
+    [[ -z "$theme" ]] && return 0
+    cp "$HOME/.zshrc" "$BACKUP_DIR/zshrc.$(date +%s)"
+    sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"$theme\"/" "$HOME/.zshrc"
     ok "Theme changed to: $theme"
 }
 
@@ -465,18 +584,23 @@ action_backup() {
 
 action_update_tool() {
     check_for_updates
-    if [[ "$UPDATE_ERROR" == "true" ]]; then warn "Failed to connect to GitHub."; return; fi
-    if [[ "$HAS_UPDATE" == "false" ]]; then ok "You are on the latest version."; return; fi
+    if [[ "$UPDATE_ERROR" == "true" ]]; then warn "Failed to connect to GitHub."; return 0; fi
+    if [[ "$HAS_UPDATE" == "false" ]]; then ok "You are on the latest version."; return 0; fi
 
-    confirm_action "Update to v$REMOTE_VERSION? | $(arb 'هل تريد التحديث الآن؟')" || return
+    confirm_action "$(t q_upd) (v$REMOTE_VERSION) (y/N): " || return 0
     msg "Updating tool..."
     TEMP_FILE=$(mktemp)
     if gum spin --spinner globe --title "Downloading..." -- curl -fsSL "$REPO_URL" -o "$TEMP_FILE"; then
-        chmod +x "$TEMP_FILE"
-        mv "$TEMP_FILE" "$PREFIX/bin/theader"
-        ok "Update successful! Restarting..."
-        sleep 2
-        exec "$PREFIX/bin/theader"
+        if grep -q "T-HEADER CONTROL PANEL" "$TEMP_FILE"; then
+            chmod +x "$TEMP_FILE"
+            mv "$TEMP_FILE" "$PREFIX/bin/theader"
+            ok "Update successful! Restarting..."
+            sleep 2
+            exec "$PREFIX/bin/theader"
+        else
+            err "Downloaded file is invalid. Update aborted."
+            rm -f "$TEMP_FILE"
+        fi
     else
         err "Update failed. Check internet."
         rm -f "$TEMP_FILE"
@@ -484,78 +608,98 @@ action_update_tool() {
 }
 
 action_install_all() {
-    confirm_action "Install EVERYTHING (Packages + Zsh + Theme + Plugins)? | $(arb 'تثبيت الكل؟')" || return
-    action_install_packages
-    action_setup_zsh
-    install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
-    install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
+    confirm_action "$(t q_all) (y/N): " || return 0
+    action_install_packages || true
+    action_setup_zsh || true
+    install_omz_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions" || true
+    install_omz_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting" || true
     generate_keyboards
     mkdir -p "$HOME/.termux" && cp "$TPT_DIR/kb-standard.properties" "$HOME/.termux/termux.properties"
     termux-reload-settings 2>/dev/null || true
     [[ -f "$HOME/.zshrc" ]] && sed -i "s/^ZSH_THEME=.*/ZSH_THEME=\"agnoster\"/" "$HOME/.zshrc"
-    ok "Full installation complete! Restart Termux."
+    # enable terminal greeting by default
+    generate_header_sh
+    if [[ -f "$HOME/.zshrc" ]] && ! grep -q "theader header >>>" "$HOME/.zshrc"; then
+        cat >> "$HOME/.zshrc" <<'EOF'
+
+# >>> theader header >>>
+[ -f "$HOME/.config/theader/header.sh" ] && source "$HOME/.config/theader/header.sh"
+# <<< theader header <<<
+EOF
+    fi
+    ok "Full installation complete! Restart Termux. | التثبيت اكتمل — أعد تشغيل الترمينال"
 }
 
 action_remove() {
-    confirm_action "Remove T-Header completely? | $(arb 'إزالة T-Header؟')" || return
-    action_backup
-    rm -rf "$CONFIG_DIR" && rm -f "$HOME/.termux/termux.properties"
+    confirm_action "$(t q_rm) (y/N): " || return 0
+    action_backup || true
+    rm -rf "$CONFIG_DIR"
+    rm -f "$HOME/.termux/termux.properties"
     sed -i '/theader/d' "$HOME/.zshrc" 2>/dev/null || true
-    ok "T-Header removed."
+    ok "T-Header removed. Backups kept in: $BACKUP_DIR"
 }
 
 # ─── Main Menu ────────────────────────────────────────────────────────
 main_loop() {
     while true; do
         banner
-        local choice
-        local update_opt=""
+        local choice update_opt hdr_opt
 
         if [[ "$HAS_UPDATE" == "true" ]]; then
-            update_opt="11) 🔄 Update Tool      | $(arb 'تحديث اللوحة')"
+            update_opt="11) 🔄 $(t m_upd)"
         else
-            update_opt="11) 🔄 Check Updates    | $(arb 'فحص التحديثات')"
+            update_opt="11) 🔄 $(t m_chk)"
+        fi
+
+        if grep -q "theader header >>>" "$HOME/.zshrc" 2>/dev/null; then
+            hdr_opt="14) 🖥️  $(t m_hdr_on)"
+        else
+            hdr_opt="14) 🖥️  $(t m_hdr_off)"
         fi
 
         choice=$(printf "%s\n" \
-            " 1) ── Setup       | $(arb 'الإعداد') ──────────────────────────" \
-            " 2) 📦 Install Packages  | $(arb 'تثبيت الحزم')" \
-            " 3) 🐚 Setup Zsh         | $(arb 'إعداد Zsh')" \
-            " 4) ── Customize   | $(arb 'التخصيص') ────────────────────────" \
-            " 5) 🧩 Manage Plugins    | $(arb 'إدارة الإضافات')" \
-            " 6) 🎨 Change Logo       | $(arb 'تغيير الشعار')" \
-            " 7) 📝 Change Title      | $(arb 'تغيير العنوان')" \
-            " 8) ⌨️  Change Keyboard   | $(arb 'تغيير الكيبورد')" \
-            " 9) 🎭 Change Theme      | $(arb 'تغيير الثيم')" \
-            "10) ── Maintenance | $(arb 'الصيانة') ────────────────────────" \
+            " 1) ── $(t m_setup) ──────────────────────────" \
+            " 2) 📦 $(t m_pkgs)" \
+            " 3) 🐚 $(t m_zsh)" \
+            " 4) ── $(t m_custom) ──────────────────────────" \
+            " 5) 🧩 $(t m_plugins)" \
+            " 6) 🎨 $(t m_logo)" \
+            " 7) 📝 $(t m_title)" \
+            " 8) ⌨️  $(t m_kb)" \
+            " 9) 🎭 $(t m_theme)" \
+            "10) ── $(t m_maint) ──────────────────────────" \
             "$update_opt" \
-            "12) 💾 Backup            | $(arb 'نسخة احتياطية')" \
-            "13) 🚀 Install Everything| $(arb 'تثبيت الكل')" \
-            "14) 🗑️  Remove T-Header   | $(arb 'إزالة')" \
-            "15) ❌ Exit              | $(arb 'خروج')" | \
-            fzf --reverse --height 100% --border --info=inline --prompt "Select (type number or use arrows) > " --pointer "▶ ") || break
+            "12) 💾 $(t m_backup)" \
+            "13) 🚀 $(t m_all)" \
+            "$hdr_opt" \
+            "15) 🌐 $(t m_lang)" \
+            "16) 🗑️  $(t m_remove)" \
+            "17) ❌ $(t m_exit)" | \
+            fzf --reverse --height 100% --border --info=inline --prompt "Select (number or arrows) > " --pointer "▶ ") || break
 
         echo
         case "$choice" in
             *"──"*) continue ;;
-            *"Install Packages"*) action_install_packages ;;
-            *"Setup Zsh"*) action_setup_zsh ;;
-            *"Manage Plugins"*) action_manage_plugins ;;
-            *"Change Logo"*) action_change_logo ;;
-            *"Change Title"*) action_change_title ;;
-            *"Change Keyboard"*) action_change_keyboard ;;
-            *"Change Theme"*) action_change_theme ;;
-            *"Update Tool"*|*"Check Updates"*) action_update_tool ;;
-            *"Backup"*) action_backup ;;
-            *"Install Everything"*) action_install_all ;;
-            *"Remove T-Header"*) action_remove ;;
-            *"Exit"*|"") break ;;
+            *"Install Packages"*|*"تثبيت الحزم"*)      action_install_packages || true ;;
+            *"Setup Zsh"*|*"إعداد Zsh"*)               action_setup_zsh || true ;;
+            *"Manage Plugins"*|*"إدارة الإضافات"*)     action_manage_plugins || true ;;
+            *"Change Logo"*|*"تغيير الشعار"*)          action_change_logo || true ;;
+            *"Change Title"*|*"تغيير العنوان"*)        action_change_title || true ;;
+            *"Change Keyboard"*|*"تغيير الكيبورد"*)    action_change_keyboard || true ;;
+            *"Change Theme"*|*"تغيير الثيم"*)          action_change_theme || true ;;
+            *"Update Tool"*|*"تحديث اللوحة"*|*"Check Updates"*|*"فحص التحديثات"*) action_update_tool || true ;;
+            *"Backup"*|*"نسخة احتياطية"*)              action_backup || true ;;
+            *"Install Everything"*|*"تثبيت الكل"*)     action_install_all || true ;;
+            *"Terminal Header"*|*"هيدر الترمينال"*)    action_toggle_header || true ;;
+            *"Switch to English"*|*"للعربية"*)         toggle_language || true ;;
+            *"Remove T-Header"*|*"إزالة T-Header"*)    action_remove || true ;;
+            *"Exit"*|*"خروج"*|"")                      break ;;
         esac
         echo
-        confirm_action "Return to main menu? | $(arb 'العودة للقائمة الرئيسية؟')" || break
+        confirm_action "$(t q_back) " || break
     done
     clear
-    gum style --foreground "$CLR_DIM" "وداعاً 👋"
+    gum style --foreground "$CLR_DIM" "$(t bye)"
 }
 
 # ─── CLI ──────────────────────────────────────────────────────────────
@@ -563,24 +707,24 @@ case "${1:-}" in
     -h|--help)
         cat <<EOF
 ${APP_NAME} v${VERSION}
-Usage: $(basename "$0") [OPTION]
+Usage: $(basename "$0") [OPTION|COMMAND]
 Options:
   -h, --help      Show this help
   -v, --version   Show version
   -u, --update    Force update to latest version
   -l, --log       Open log file
-  (no args)       Launch interactive menu
+Commands (direct):
+  logo, title, keyboard, theme   Open the corresponding action
+  (no args)                      Launch interactive menu
 EOF
         exit 0 ;;
     -v|--version) echo "${APP_NAME} v${VERSION}"; exit 0 ;;
-    -u|--update)  check_for_updates; action_update_tool; exit 0 ;;
-    -l|--log)
-        if [[ -f "$LOG_FILE" ]]; then
-            if has less; then less "$LOG_FILE"; else cat "$LOG_FILE"; fi
-        else
-            echo "No log yet"
-        fi
-        exit 0 ;;
+    -u|--update)  check_for_updates; action_update_tool || true; exit 0 ;;
+    -l|--log)     [[ -f "$LOG_FILE" ]] && less "$LOG_FILE" || echo "No log yet"; exit 0 ;;
+    logo)         action_change_logo || true; exit 0 ;;
+    title)        action_change_title || true; exit 0 ;;
+    keyboard)     action_change_keyboard || true; exit 0 ;;
+    theme)        action_change_theme || true; exit 0 ;;
 esac
 
 # ─── Entrypoint ───────────────────────────────────────────────────────
@@ -589,7 +733,7 @@ has fzf     || { echo "Installing fzf...";     pkg install -y fzf     || exit 1;
 has fribidi || pkg install -y fribidi >/dev/null 2>&1 || true
 
 generate_keyboards
-log INFO "Session started (v${VERSION})"
+log INFO "Session started (v${VERSION}) | lang=$LANG_MODE"
 msg "Checking for updates..."
 check_for_updates
 
